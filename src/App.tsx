@@ -1,28 +1,35 @@
-/* Main App Component - Handles routing (using react-router-dom), query client and other providers - use this file to add all routes */
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { Toaster } from '@/components/ui/toaster'
 import { Toaster as Sonner } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import Index from './pages/Index'
-import NotFound from './pages/NotFound'
 import Layout from './components/Layout'
-
-// ONLY IMPORT AND RENDER WORKING PAGES, NEVER ADD PLACEHOLDER COMPONENTS OR PAGES IN THIS FILE
-// AVOID REMOVING ANY CONTEXT PROVIDERS FROM THIS FILE (e.g. TooltipProvider, Toaster, Sonner)
+import NotFound from './pages/NotFound'
+import Index from './pages/Index'
+import DoctorList from './pages/medicos/List'
+import DoctorForm from './pages/medicos/Form'
+import AiUpload from './pages/medicos/AiUpload'
+import DoctorDetails from './pages/medicos/Details'
+import { MainStoreProvider } from './stores/useMainStore'
 
 const App = () => (
   <BrowserRouter future={{ v7_startTransition: false, v7_relativeSplatPath: false }}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <Routes>
-        <Route element={<Layout />}>
-          <Route path="/" element={<Index />} />
-          {/* ADD ALL CUSTOM ROUTES MUST BE ADDED HERE */}
-        </Route>
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-    </TooltipProvider>
+    <MainStoreProvider>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <Routes>
+          <Route element={<Layout />}>
+            <Route path="/" element={<Index />} />
+            <Route path="/medicos" element={<DoctorList />} />
+            <Route path="/medicos/novo" element={<DoctorForm />} />
+            <Route path="/medicos/editar/:id" element={<DoctorForm />} />
+            <Route path="/medicos/ia-upload" element={<AiUpload />} />
+            <Route path="/medicos/:id" element={<DoctorDetails />} />
+          </Route>
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </TooltipProvider>
+    </MainStoreProvider>
   </BrowserRouter>
 )
 
