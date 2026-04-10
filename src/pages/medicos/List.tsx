@@ -3,11 +3,30 @@ import { Link } from 'react-router-dom'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { MoreHorizontal, Download, Eye, Edit, Trash2, Search } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { api } from '@/services/api'
@@ -29,19 +48,19 @@ export default function DoctorList() {
       const [docs, allDocs, allContracts] = await Promise.all([
         api.medicos.list(),
         api.documentos.listAllActive(),
-        api.contratos.listAll()
+        api.contratos.listAll(),
       ])
       setDoctors(docs)
-      
+
       const dMap: Record<string, any[]> = {}
-      allDocs.forEach(d => {
+      allDocs.forEach((d) => {
         if (!dMap[d.medico_id]) dMap[d.medico_id] = []
         dMap[d.medico_id].push(d)
       })
       setDocsMap(dMap)
 
       const cMap: Record<string, any> = {}
-      allContracts.forEach(c => {
+      allContracts.forEach((c) => {
         cMap[c.medico_id] = c
       })
       setContractsMap(cMap)
@@ -50,51 +69,64 @@ export default function DoctorList() {
     }
   }
 
-  useEffect(() => { loadData() }, [])
+  useEffect(() => {
+    loadData()
+  }, [])
   useRealtime('medicos', () => loadData())
   useRealtime('documentos_medicos', () => loadData())
 
   const getCompleteness = (doc: any) => {
-    let score = 0;
-    if (doc.nome_completo && doc.cpf && doc.email && doc.telefone) score += 25;
-    else if (doc.nome_completo && doc.cpf) score += 15;
+    let score = 0
+    if (doc.nome_completo && doc.cpf && doc.email && doc.telefone) score += 25
+    else if (doc.nome_completo && doc.cpf) score += 15
 
-    if (doc.crm && doc.uf_crm && doc.especialidade && doc.categoria_medico) score += 25;
-    else if (doc.crm && doc.uf_crm) score += 15;
+    if (doc.crm && doc.uf_crm && doc.especialidade && doc.categoria_medico) score += 25
+    else if (doc.crm && doc.uf_crm) score += 15
 
-    const mDocs = docsMap[doc.id] || [];
-    const validDocs = mDocs.filter(d => d.status_validacao === 'Validado');
-    if (validDocs.length >= 2) score += 25;
-    else if (mDocs.length > 0) score += 15;
+    const mDocs = docsMap[doc.id] || []
+    const validDocs = mDocs.filter((d) => d.status_validacao === 'Validado')
+    if (validDocs.length >= 2) score += 25
+    else if (mDocs.length > 0) score += 15
 
-    const requiresContract = doc.categoria_medico === 'MEDICO PRN' || doc.categoria_medico === 'MEDICO PALHOÇA';
+    const requiresContract =
+      doc.categoria_medico === 'MEDICO PRN' || doc.categoria_medico === 'MEDICO PALHOÇA'
     if (requiresContract) {
-      if (doc.contrato_assinado) score += 25;
+      if (doc.contrato_assinado) score += 25
     } else {
-      score += 25;
+      score += 25
     }
 
-    return Math.min(score, 100);
+    return Math.min(score, 100)
   }
 
   const filteredDoctors = doctors.filter((doc) => {
     const s = search.toLowerCase()
-    const matchesSearch = doc.nome_completo.toLowerCase().includes(s) || doc.crm.includes(s) || doc.cpf.includes(s)
+    const matchesSearch =
+      doc.nome_completo.toLowerCase().includes(s) || doc.crm.includes(s) || doc.cpf.includes(s)
     const matchesStatus = filterStatus === 'all' || doc.status_cadastro === filterStatus
     return matchesSearch && matchesStatus
   })
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'Ativo': return 'bg-emerald-500 hover:bg-emerald-600'
-      case 'Aprovado': return 'bg-teal-500 hover:bg-teal-600'
-      case 'Inativo': return 'bg-slate-500 hover:bg-slate-600'
-      case 'Rejeitado': return 'bg-red-500 hover:bg-red-600'
-      case 'Rascunho': return 'bg-amber-500 hover:bg-amber-600'
-      case 'Pendente de Revisão': return 'bg-sky-500 hover:bg-sky-600'
-      case 'Pendente Documental': return 'bg-indigo-500 hover:bg-indigo-600'
-      case 'Pendente Contratual': return 'bg-blue-500 hover:bg-blue-600'
-      default: return 'bg-primary hover:bg-primary'
+      case 'Ativo':
+        return 'bg-emerald-500 hover:bg-emerald-600'
+      case 'Aprovado':
+        return 'bg-teal-500 hover:bg-teal-600'
+      case 'Inativo':
+        return 'bg-slate-500 hover:bg-slate-600'
+      case 'Rejeitado':
+        return 'bg-red-500 hover:bg-red-600'
+      case 'Rascunho':
+        return 'bg-amber-500 hover:bg-amber-600'
+      case 'Pendente de Revisão':
+        return 'bg-sky-500 hover:bg-sky-600'
+      case 'Pendente Documental':
+        return 'bg-indigo-500 hover:bg-indigo-600'
+      case 'Pendente Contratual':
+        return 'bg-blue-500 hover:bg-blue-600'
+      default:
+        return 'bg-primary hover:bg-primary'
     }
   }
 
@@ -109,7 +141,19 @@ export default function DoctorList() {
   }
 
   const handleExport = () => {
-    const csvRows = [['Nome', 'CPF', 'CRM', 'UF', 'Categoria', 'Contratacao', 'Status', 'Origem', 'Completude (%)']]
+    const csvRows = [
+      [
+        'Nome',
+        'CPF',
+        'CRM',
+        'UF',
+        'Categoria',
+        'Contratacao',
+        'Status',
+        'Origem',
+        'Completude (%)',
+      ],
+    ]
     filteredDoctors.forEach((d) => {
       csvRows.push([
         `"${d.nome_completo}"`,
@@ -120,10 +164,12 @@ export default function DoctorList() {
         d.tipo_contratacao,
         d.status_cadastro,
         d.origem_cadastro,
-        getCompleteness(d).toString()
+        getCompleteness(d).toString(),
       ])
     })
-    const blob = new Blob([csvRows.map((r) => r.join(',')).join('\n')], { type: 'text/csv;charset=utf-8;' })
+    const blob = new Blob([csvRows.map((r) => r.join(',')).join('\n')], {
+      type: 'text/csv;charset=utf-8;',
+    })
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -154,7 +200,12 @@ export default function DoctorList() {
           <div className="flex flex-col sm:flex-row gap-4 items-center">
             <div className="relative w-full sm:max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input placeholder="Buscar por nome, CPF ou CRM..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
+              <Input
+                placeholder="Buscar por nome, CPF ou CRM..."
+                className="pl-9"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
             </div>
             <div className="w-full sm:w-auto flex-1"></div>
             <Select value={filterStatus} onValueChange={setFilterStatus}>
@@ -196,61 +247,83 @@ export default function DoctorList() {
                 </TableRow>
               ) : (
                 filteredDoctors.map((doc) => {
-                  const comp = getCompleteness(doc);
+                  const comp = getCompleteness(doc)
                   return (
-                  <TableRow key={doc.id} className="group">
-                    <TableCell className="font-medium">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
-                          {doc.nome_completo.substring(0, 2).toUpperCase()}
+                    <TableRow key={doc.id} className="group">
+                      <TableCell className="font-medium">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
+                            {doc.nome_completo.substring(0, 2).toUpperCase()}
+                          </div>
+                          <div className="flex flex-col max-w-[200px] truncate">
+                            <span className="truncate">{doc.nome_completo}</span>
+                            <span className="text-xs text-muted-foreground truncate">
+                              {doc.email || doc.telefone || 'Sem contato'}
+                            </span>
+                          </div>
                         </div>
-                        <div className="flex flex-col max-w-[200px] truncate">
-                          <span className="truncate">{doc.nome_completo}</span>
-                          <span className="text-xs text-muted-foreground truncate">{doc.email || doc.telefone || 'Sem contato'}</span>
+                      </TableCell>
+                      <TableCell>
+                        {doc.crm}/{doc.uf_crm}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col items-start gap-1">
+                          <span className="text-[10px] uppercase font-bold text-muted-foreground">
+                            {doc.tipo_contratacao}
+                          </span>
+                          <span className="text-xs border px-2 py-0.5 rounded-md bg-muted/50">
+                            {doc.categoria_medico}
+                          </span>
                         </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>{doc.crm}/{doc.uf_crm}</TableCell>
-                    <TableCell>
-                      <div className="flex flex-col items-start gap-1">
-                        <span className="text-[10px] uppercase font-bold text-muted-foreground">{doc.tipo_contratacao}</span>
-                        <span className="text-xs border px-2 py-0.5 rounded-md bg-muted/50">{doc.categoria_medico}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="w-full max-w-[120px] flex items-center gap-2">
-                        <Progress value={comp} className="h-2" />
-                        <span className="text-xs font-medium w-8">{comp}%</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={getStatusColor(doc.status_cadastro)}>{doc.status_cadastro}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                          <DropdownMenuItem asChild>
-                            <Link to={`/medicos/${doc.id}`}><Eye className="mr-2 h-4 w-4" /> Visualizar</Link>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem asChild>
-                            <Link to={`/medicos/editar/${doc.id}`}><Edit className="mr-2 h-4 w-4" /> Editar</Link>
-                          </DropdownMenuItem>
-                          {role === 'Administrador' && doc.status_cadastro !== 'Inativo' && (
-                            <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(doc.id)}>
-                              <Trash2 className="mr-2 h-4 w-4" /> Inativar
+                      </TableCell>
+                      <TableCell>
+                        <div className="w-full max-w-[120px] flex items-center gap-2">
+                          <Progress value={comp} className="h-2" />
+                          <span className="text-xs font-medium w-8">{comp}%</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={getStatusColor(doc.status_cadastro)}>
+                          {doc.status_cadastro}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Ações</DropdownMenuLabel>
+                            <DropdownMenuItem asChild>
+                              <Link to={`/medicos/${doc.id}`}>
+                                <Eye className="mr-2 h-4 w-4" /> Visualizar
+                              </Link>
                             </DropdownMenuItem>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                )})}
+                            <DropdownMenuItem asChild>
+                              <Link to={`/medicos/editar/${doc.id}`}>
+                                <Edit className="mr-2 h-4 w-4" /> Editar
+                              </Link>
+                            </DropdownMenuItem>
+                            {role === 'Administrador' && doc.status_cadastro !== 'Inativo' && (
+                              <DropdownMenuItem
+                                className="text-destructive"
+                                onClick={() => handleDelete(doc.id)}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" /> Inativar
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
+              )}
             </TableBody>
           </Table>
         </CardContent>
