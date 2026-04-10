@@ -9,15 +9,30 @@ import { useToast } from '@/hooks/use-toast'
 export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
   const { signIn } = useAuth()
   const navigate = useNavigate()
   const { toast } = useToast()
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
+    setIsLoading(true)
     const { error } = await signIn(email, password)
+    setIsLoading(false)
+
     if (error) {
-      toast({ title: 'Erro', description: 'Credenciais inválidas', variant: 'destructive' })
+      let description = 'Ocorreu um erro ao tentar fazer login.'
+      const err = error as any
+
+      if (err?.status === 0) {
+        description = 'Erro de rede. Verifique sua conexão com a internet.'
+      } else if (err?.status === 400 || err?.status === 401) {
+        description = 'E-mail ou senha incorretos.'
+      } else if (err?.status === 403) {
+        description = 'Sua conta requer verificação ou foi suspensa.'
+      }
+
+      toast({ title: 'Falha na autenticação', description, variant: 'destructive' })
     } else {
       navigate('/')
     }
@@ -72,8 +87,12 @@ export default function Login() {
                 className="h-12"
               />
             </div>
-            <Button type="submit" className="w-full h-12 text-md font-medium mt-2">
-              Entrar no Sistema
+            <Button
+              type="submit"
+              disabled={isLoading}
+              className="w-full h-12 text-md font-medium mt-2"
+            >
+              {isLoading ? 'Entrando...' : 'Entrar no Sistema'}
             </Button>
           </form>
         </CardContent>
