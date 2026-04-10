@@ -67,6 +67,14 @@ export default function DoctorDetails() {
   const handleApprove = async () => {
     await api.medicos.update(doctor.id, { status_cadastro: 'Aprovado' })
     await api.auditoria.log(doctor.id, 'Aprovação de Cadastro')
+    if (user) {
+      await api.notificacoes.list(user.id).then(async (notifs) => {
+        const toResolve = notifs.filter((n) => n.link === `/medicos/${doctor.id}` && !n.lida)
+        for (const n of toResolve) {
+          await api.notificacoes.markAsRead(n.id)
+        }
+      })
+    }
     toast({ title: 'Cadastro Aprovado' })
   }
 

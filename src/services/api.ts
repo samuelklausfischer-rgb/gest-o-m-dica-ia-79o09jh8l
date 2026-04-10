@@ -49,6 +49,10 @@ export const api = {
     getFileUrl: (record: any) => pb.files.getURL(record, record.url_arquivo),
   },
   auditoria: {
+    listAll: () =>
+      pb
+        .collection('auditoria_medicos')
+        .getFullList({ sort: '-created', expand: 'usuario_id,medico_id' }),
     listByMedico: (medicoId: string) =>
       pb
         .collection('auditoria_medicos')
@@ -56,7 +60,7 @@ export const api = {
     listRecent: () =>
       pb
         .collection('auditoria_medicos')
-        .getList(1, 5, { sort: '-created', expand: 'usuario_id,medico_id' }),
+        .getList(1, 10, { sort: '-created', expand: 'usuario_id,medico_id' }),
     log: (
       medico_id: string,
       acao: string,
@@ -89,5 +93,38 @@ export const api = {
     create: (data: FormData) => pb.collection('importacoes_ia_medicos').create(data),
     update: (id: string, data: any) => pb.collection('importacoes_ia_medicos').update(id, data),
     get: (id: string) => pb.collection('importacoes_ia_medicos').getOne(id),
+  },
+  notificacoes: {
+    list: (userId: string) =>
+      pb
+        .collection('notificacoes')
+        .getFullList({ filter: `user_id="${userId}"`, sort: '-created' }),
+    markAsRead: (id: string) => pb.collection('notificacoes').update(id, { lida: true }),
+    markAllAsRead: async (userId: string) => {
+      const unread = await pb
+        .collection('notificacoes')
+        .getFullList({ filter: `user_id="${userId}" && lida=false` })
+      return Promise.all(
+        unread.map((n) => pb.collection('notificacoes').update(n.id, { lida: true })),
+      )
+    },
+  },
+  filtros: {
+    list: (userId: string) =>
+      pb
+        .collection('filtros_salvos')
+        .getFullList({ filter: `user_id="${userId}"`, sort: '-created' }),
+    create: (data: any) => pb.collection('filtros_salvos').create(data),
+    delete: (id: string) => pb.collection('filtros_salvos').delete(id),
+  },
+  configuracoes: {
+    get: async () => {
+      try {
+        return await pb.collection('configuracoes_sistema').getFirstListItem("id!=''")
+      } catch {
+        return null
+      }
+    },
+    update: (id: string, data: any) => pb.collection('configuracoes_sistema').update(id, data),
   },
 }

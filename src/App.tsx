@@ -9,6 +9,9 @@ import DoctorList from './pages/medicos/List'
 import DoctorForm from './pages/medicos/Form'
 import AiUpload from './pages/medicos/AiUpload'
 import DoctorDetails from './pages/medicos/Details'
+import Pendencies from './pages/Pendencies'
+import Reports from './pages/Reports'
+import Settings from './pages/Settings'
 import Login from './pages/Login'
 import { AuthProvider, useAuth } from './hooks/use-auth'
 
@@ -35,6 +38,9 @@ const AppRoutes = () => (
       <Route path="/medicos/editar/:id" element={<DoctorForm />} />
       <Route path="/medicos/ia-upload" element={<AiUpload />} />
       <Route path="/medicos/:id" element={<DoctorDetails />} />
+      <Route path="/pendencias" element={<Pendencies />} />
+      <Route path="/relatorios" element={<Reports />} />
+      <Route path="/configuracoes" element={<Settings />} />
     </Route>
     <Route path="*" element={<NotFound />} />
   </Routes>

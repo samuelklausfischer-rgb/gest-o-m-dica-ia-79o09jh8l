@@ -4,12 +4,11 @@ import {
   LayoutDashboard,
   Users,
   UserPlus,
-  FileText,
   Settings,
   LogOut,
-  ChevronRight,
-  Menu,
   BrainCircuit,
+  FileWarning,
+  BarChart3,
 } from 'lucide-react'
 import {
   SidebarProvider,
@@ -41,6 +40,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '@/hooks/use-auth'
+import { NotificationDropdown } from './NotificationDropdown'
 
 export default function Layout() {
   const location = useLocation()
@@ -127,6 +127,32 @@ export default function Layout() {
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={location.pathname === '/pendencias'}>
+                  <Link to="/pendencias">
+                    <FileWarning />
+                    <span>Central de Pendências</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={location.pathname === '/relatorios'}>
+                  <Link to="/relatorios">
+                    <BarChart3 />
+                    <span>Relatórios</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              {role === 'Administrador' && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild isActive={location.pathname === '/configuracoes'}>
+                    <Link to="/configuracoes">
+                      <Settings />
+                      <span>Configurações</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
             </SidebarMenu>
           </SidebarContent>
           <SidebarFooter className="p-4 border-t border-sidebar-border">
@@ -159,12 +185,13 @@ export default function Layout() {
                   <Stethoscope className="w-4 h-4" />
                 </div>
               </div>
+              <NotificationDropdown />
               <DropdownMenu>
                 <DropdownMenuTrigger className="outline-none">
                   <div className="flex items-center gap-2 hover:bg-muted p-1 pr-3 rounded-full transition-colors cursor-pointer border border-transparent hover:border-border">
                     <Avatar className="h-8 w-8">
                       <AvatarImage src="https://img.usecurling.com/ppl/thumbnail?gender=female&seed=1" />
-                      <AvatarFallback>AD</AvatarFallback>
+                      <AvatarFallback>US</AvatarFallback>
                     </Avatar>
                     <div className="hidden sm:flex flex-col items-start text-sm">
                       <span className="font-semibold leading-none">{user?.name || 'Usuário'}</span>
@@ -190,7 +217,7 @@ export default function Layout() {
           </div>
 
           <footer className="py-3 px-6 text-center text-xs text-muted-foreground border-t bg-card shrink-0">
-            &copy; {new Date().getFullYear()} Gestão Médica IA v0.0.1. Todos os direitos reservados.
+            &copy; {new Date().getFullYear()} Gestão Médica IA v0.0.2. Todos os direitos reservados.
           </footer>
         </main>
       </div>
