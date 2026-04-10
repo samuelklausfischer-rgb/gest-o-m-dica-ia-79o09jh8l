@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-10T13:26:02.656Z",
+  "generatedAt": "2026-04-10T13:36:29.599Z",
   "collections": [
     {
       "name": "users",
@@ -311,6 +311,12 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": []

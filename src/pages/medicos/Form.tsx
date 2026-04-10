@@ -27,34 +27,69 @@ import {
 import { useToast } from '@/hooks/use-toast'
 import { api } from '@/services/api'
 import { useAuth } from '@/hooks/use-auth'
-import { maskCpf, maskCnpj, maskPhone } from '@/utils/masks'
-import { ArrowLeft, Save, CheckCircle, Clock, AlertTriangle } from 'lucide-react'
+import { maskCpf, maskCnpj, maskPhone, capitalizeName } from '@/utils/masks'
+import { ArrowLeft, Save, CheckCircle, Clock, AlertTriangle, Loader2 } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 
-const formSchema = z.object({
-  nome_completo: z.string().min(3, 'Nome muito curto'),
-  cpf: z.string().min(14, 'CPF inválido'),
-  email: z.string().email('E-mail inválido').or(z.literal('')),
-  telefone: z.string().optional(),
-  crm: z.string().min(4, 'CRM inválido'),
-  uf_crm: z.string().min(2, 'UF obrigatório'),
-  rqe: z.string().optional(),
-  especialidade: z.string().min(3, 'Especialidade obrigatória'),
-  cnes: z.string().optional(),
-  categoria_medico: z.enum([
-    'MEDICO PRN',
-    'MEDICO PALHOÇA',
-    'MEDICO APICE TELE',
-    'MEDICO TELEIMAGEM',
-  ]),
-  tipo_contratacao: z.enum(['SCP', 'PJ']),
-  contrato_assinado: z.boolean(),
-  data_assinatura: z.string().optional(),
-  modelo_remuneracao: z.enum(['Fixo', 'Plantão', 'Hora', 'Produção', 'Outro']).optional(),
-  valor_acordado: z.string().optional(),
-  pj_razao_social: z.string().optional(),
-  pj_cnpj: z.string().optional(),
-})
+const formSchema = z
+  .object({
+    nome_completo: z.string().min(3, 'Nome muito curto').trim(),
+    cpf: z.string().min(14, 'CPF inválido'),
+    email: z.string().email('E-mail inválido').or(z.literal('')),
+    telefone: z.string().optional(),
+    crm: z.string().min(4, 'CRM inválido'),
+    uf_crm: z.string().min(2, 'UF obrigatório'),
+    rqe: z.string().optional(),
+    especialidade: z.string().min(3, 'Especialidade obrigatória'),
+    cnes: z.string().optional(),
+    categoria_medico: z.enum([
+      'MEDICO PRN',
+      'MEDICO PALHOÇA',
+      'MEDICO APICE TELE',
+      'MEDICO TELEIMAGEM',
+    ]),
+    tipo_contratacao: z.enum(['SCP', 'PJ']),
+    contrato_assinado: z.boolean(),
+    data_assinatura: z.string().optional(),
+    modelo_remuneracao: z.enum(['Fixo', 'Plantão', 'Hora', 'Produção', 'Outro']).optional(),
+    valor_acordado: z.string().optional(),
+    pj_razao_social: z.string().optional(),
+    pj_cnpj: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.tipo_contratacao === 'PJ') {
+      if (!data.pj_cnpj || data.pj_cnpj.length < 14) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'CNPJ obrigatório e válido para PJ',
+          path: ['pj_cnpj'],
+        })
+      }
+      if (!data.pj_razao_social) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Razão social obrigatória para PJ',
+          path: ['pj_razao_social'],
+        })
+      }
+    }
+    if (data.categoria_medico === 'MEDICO PRN' || data.categoria_medico === 'MEDICO PALHOÇA') {
+      if (data.contrato_assinado && !data.data_assinatura) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Data de assinatura obrigatória',
+          path: ['data_assinatura'],
+        })
+      }
+      if (!data.valor_acordado) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Valor acordado é obrigatório para esta categoria',
+          path: ['valor_acordado'],
+        })
+      }
+    }
+  })
 
 type FormValues = z.infer<typeof formSchema>
 
@@ -65,7 +100,9 @@ export default function DoctorForm() {
   const { toast } = useToast()
   const { user } = useAuth()
   const role = user?.name === 'Admin' || user?.name === 'Revisor' ? 'Administrador' : 'Operacional'
+
   const [activeTab, setActiveTab] = useState('pessoais')
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [duplicateWarning, setDuplicateWarning] = useState<{
     isOpen: boolean
     type: string
@@ -122,25 +159,48 @@ export default function DoctorForm() {
     }
   }
 
-  const performSave = async (data: FormValues, status: string, skipDuplicateCheck = false) => {
-    if (!skipDuplicateCheck) {
-      const dup = await checkDuplicates(data.cpf, data.crm, data.uf_crm)
-      if (dup) {
-        setDuplicateWarning({
-          isOpen: true,
-          type: dup.cpf === data.cpf.replace(/\D/g, '') ? 'CPF' : 'CRM+UF',
-          record: dup,
-        })
-        return
+  const logChanges = async (medId: string, oldData: any, newData: any) => {
+    if (!oldData) return
+    const keys = [
+      'nome_completo',
+      'cpf',
+      'crm',
+      'uf_crm',
+      'especialidade',
+      'categoria_medico',
+      'tipo_contratacao',
+    ]
+    for (const k of keys) {
+      if (oldData[k] !== newData[k]) {
+        await api.auditoria.log(medId, `Alterou ${k}`, k, oldData[k] || '', newData[k] || '')
       }
     }
+  }
 
+  const performSave = async (data: FormValues, status: string, skipDuplicateCheck = false) => {
+    if (isSubmitting) return
+    setIsSubmitting(true)
     try {
+      if (!skipDuplicateCheck) {
+        const dup = await checkDuplicates(data.cpf, data.crm, data.uf_crm)
+        if (dup) {
+          setDuplicateWarning({
+            isOpen: true,
+            type: dup.cpf === data.cpf.replace(/\D/g, '') ? 'CPF' : 'CRM+UF',
+            record: dup,
+          })
+          setIsSubmitting(false)
+          return
+        }
+      }
+
+      const normalizedName = capitalizeName(data.nome_completo)
+
       const docData = {
-        nome_completo: data.nome_completo,
+        nome_completo: normalizedName,
         cpf: data.cpf.replace(/\D/g, ''),
         crm: data.crm,
-        uf_crm: data.uf_crm,
+        uf_crm: data.uf_crm.toUpperCase(),
         rqe: data.rqe,
         especialidade: data.especialidade,
         email: data.email,
@@ -156,7 +216,9 @@ export default function DoctorForm() {
 
       let medId = id
       if (isEditing && id) {
+        const oldDoc = await api.medicos.get(id)
         await api.medicos.update(id, docData)
+        await logChanges(id, oldDoc, docData)
         await api.auditoria.log(id, `Atualizou cadastro para ${status}`)
       } else {
         const res = await api.medicos.create(docData)
@@ -184,17 +246,44 @@ export default function DoctorForm() {
               : null,
             modelo_remuneracao: data.modelo_remuneracao,
             valor_acordado: data.valor_acordado,
+            ativo: true,
           }
           const cont = await api.contratos.getByMedico(medId)
-          if (cont) await api.contratos.update(cont.id, contData)
-          else await api.contratos.create(contData)
+          if (cont) {
+            if (
+              cont.valor_acordado !== data.valor_acordado ||
+              cont.modelo_remuneracao !== data.modelo_remuneracao
+            ) {
+              await api.contratos.update(cont.id, { ativo: false })
+              await api.contratos.create(contData)
+            } else {
+              await api.contratos.update(cont.id, contData)
+            }
+          } else {
+            await api.contratos.create(contData)
+          }
         }
       }
 
       toast({ title: 'Sucesso', description: 'Dados salvos com sucesso.' })
       navigate('/medicos')
     } catch (error: any) {
-      toast({ title: 'Erro', description: 'Falha ao salvar dados.', variant: 'destructive' })
+      toast({
+        title: 'Erro de Servidor',
+        description: 'Falha ao salvar dados. Tente novamente.',
+        variant: 'destructive',
+        action: (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => performSave(data, status, skipDuplicateCheck)}
+          >
+            Tentar Novamente
+          </Button>
+        ),
+      })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -218,8 +307,7 @@ export default function DoctorForm() {
             </DialogTitle>
             <DialogDescription>
               Encontramos um cadastro existente com o mesmo <strong>{duplicateWarning.type}</strong>
-              .
-              <br />
+              .<br />
               <br />
               Nome: <strong>{duplicateWarning.record?.nome_completo}</strong>
               <br />
@@ -240,7 +328,7 @@ export default function DoctorForm() {
                 performSave(methods.getValues(), 'Rascunho', true)
               }}
             >
-              Salvar mesmo assim (Forçar)
+              Salvar mesmo assim
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -375,7 +463,12 @@ export default function DoctorForm() {
                           <FormItem>
                             <FormLabel>UF do CRM *</FormLabel>
                             <FormControl>
-                              <Input placeholder="SP" maxLength={2} {...field} />
+                              <Input
+                                placeholder="SP"
+                                maxLength={2}
+                                {...field}
+                                className="uppercase"
+                              />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -497,7 +590,9 @@ export default function DoctorForm() {
                           name="data_assinatura"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Data de Assinatura</FormLabel>
+                              <FormLabel>
+                                Data de Assinatura {methods.watch('contrato_assinado') && '*'}
+                              </FormLabel>
                               <FormControl>
                                 <Input type="date" {...field} />
                               </FormControl>
@@ -534,7 +629,7 @@ export default function DoctorForm() {
                           name="valor_acordado"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Valor Acordado (R$)</FormLabel>
+                              <FormLabel>Valor Acordado (R$) *</FormLabel>
                               <FormControl>
                                 <Input placeholder="0,00" {...field} />
                               </FormControl>
@@ -588,26 +683,54 @@ export default function DoctorForm() {
           </FormProvider>
         </CardContent>
         <div className="flex flex-col sm:flex-row justify-end gap-3 p-6 border-t bg-muted/10">
-          <Button type="button" variant="outline" onClick={() => navigate('/medicos')}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => navigate('/medicos')}
+            disabled={isSubmitting}
+          >
             Cancelar
           </Button>
-          <Button type="button" variant="secondary" onClick={handleDraft} className="gap-2">
-            <Save className="w-4 h-4" /> Salvar Rascunho
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={handleDraft}
+            className="gap-2"
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Save className="w-4 h-4" />
+            )}{' '}
+            Salvar Rascunho
           </Button>
           <Button
             type="button"
             className="bg-sky-600 hover:bg-sky-700 text-white gap-2"
             onClick={handleReview}
+            disabled={isSubmitting}
           >
-            <Clock className="w-4 h-4" /> Enviar para Revisão
+            {isSubmitting ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Clock className="w-4 h-4" />
+            )}{' '}
+            Enviar para Revisão
           </Button>
           {role === 'Administrador' && (
             <Button
               type="button"
               className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
               onClick={handleApprove}
+              disabled={isSubmitting}
             >
-              <CheckCircle className="w-4 h-4" /> Aprovar Imediatamente
+              {isSubmitting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <CheckCircle className="w-4 h-4" />
+              )}{' '}
+              Aprovar Imediatamente
             </Button>
           )}
         </div>

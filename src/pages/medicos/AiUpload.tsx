@@ -55,9 +55,21 @@ export default function AiUpload() {
   }
 
   const handleSave = async () => {
+    if (!formData.nome_completo || !formData.cpf || !formData.crm) {
+      toast({
+        title: 'Atenção',
+        description: 'Preencha os campos obrigatórios.',
+        variant: 'destructive',
+      })
+      return
+    }
+
     try {
       const docData = {
-        ...formData,
+        nome_completo: formData.nome_completo.trim(),
+        cpf: formData.cpf.replace(/\D/g, ''),
+        crm: formData.crm,
+        uf_crm: formData.uf_crm.toUpperCase(),
         especialidade: 'Clínica Médica',
         categoria_medico: 'MEDICO PRN',
         tipo_contratacao: 'SCP',
@@ -82,7 +94,11 @@ export default function AiUpload() {
           variant: 'destructive',
         })
       else
-        toast({ title: 'Erro', description: 'Falha ao confirmar dados.', variant: 'destructive' })
+        toast({
+          title: 'Erro de Comunicação',
+          description: 'Falha ao confirmar dados. Tente novamente.',
+          variant: 'destructive',
+        })
     }
   }
 

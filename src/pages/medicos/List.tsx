@@ -26,12 +26,33 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Skeleton } from '@/components/ui/skeleton'
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination'
 import { MoreHorizontal, Download, Eye, Edit, Trash2, Search, Save, Bookmark } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { api } from '@/services/api'
 import { useRealtime } from '@/hooks/use-realtime'
 import { useAuth } from '@/hooks/use-auth'
+import { useDebounce } from '@/hooks/use-debounce'
+import { maskCpf, partiallyMaskCpf } from '@/utils/masks'
 
 export default function DoctorList() {
   const { user } = useAuth()
@@ -41,34 +62,55 @@ export default function DoctorList() {
   const [doctors, setDoctors] = useState<any[]>([])
   const [docsMap, setDocsMap] = useState<Record<string, any[]>>({})
   const [savedFilters, setSavedFilters] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
 
   const [search, setSearch] = useState('')
+  const debouncedSearch = useDebounce(search, 300)
   const [filterStatus, setFilterStatus] = useState<string>('all')
 
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const perPage = 20
+
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+
   const loadData = async () => {
+    setLoading(true)
     try {
-      const [docs, allDocs, sf] = await Promise.all([
-        api.medicos.list(),
-        api.documentos.listAllActive(),
+      const [res, sf] = await Promise.all([
+        api.medicos.listPaginated(page, perPage, debouncedSearch, filterStatus),
         user ? api.filtros.list(user.id) : Promise.resolve([]),
       ])
-      setDoctors(docs)
+      setDoctors(res.items)
+      setTotalPages(res.totalPages)
       setSavedFilters(sf)
 
-      const dMap: Record<string, any[]> = {}
-      allDocs.forEach((d) => {
-        if (!dMap[d.medico_id]) dMap[d.medico_id] = []
-        dMap[d.medico_id].push(d)
-      })
-      setDocsMap(dMap)
+      if (res.items.length > 0) {
+        const docs = await api.documentos.listAllActive()
+        const dMap: Record<string, any[]> = {}
+        docs.forEach((d) => {
+          if (!dMap[d.medico_id]) dMap[d.medico_id] = []
+          dMap[d.medico_id].push(d)
+        })
+        setDocsMap(dMap)
+      } else {
+        setDocsMap({})
+      }
     } catch (e) {
-      console.error(e)
+      toast({
+        title: 'Erro de conexão',
+        description: 'Não foi possível carregar os dados. Tente novamente.',
+        variant: 'destructive',
+      })
+    } finally {
+      setLoading(false)
     }
   }
 
   useEffect(() => {
     loadData()
-  }, [user])
+  }, [user, page, debouncedSearch, filterStatus])
+
   useRealtime('medicos', () => loadData())
   useRealtime('documentos_medicos', () => loadData())
 
@@ -97,12 +139,7 @@ export default function DoctorList() {
   }
 
   const getSLA = (doc: any) => {
-    if (
-      doc.status_cadastro === 'Ativo' ||
-      doc.status_cadastro === 'Aprovado' ||
-      doc.status_cadastro === 'Inativo'
-    )
-      return null
+    if (['Ativo', 'Aprovado', 'Inativo'].includes(doc.status_cadastro)) return null
     const days = Math.floor((Date.now() - new Date(doc.created).getTime()) / (1000 * 3600 * 24))
     if (days > 15)
       return { label: 'SLA: Atrasado', color: 'bg-red-100 text-red-700 border-red-200' }
@@ -112,22 +149,11 @@ export default function DoctorList() {
   }
 
   const checkCriticalAlert = (doc: any) => {
-    if (
+    return (
       (doc.categoria_medico === 'MEDICO PRN' || doc.categoria_medico === 'MEDICO PALHOÇA') &&
       !doc.contrato_assinado
-    ) {
-      return true
-    }
-    return false
+    )
   }
-
-  const filteredDoctors = doctors.filter((doc) => {
-    const s = search.toLowerCase()
-    const matchesSearch =
-      doc.nome_completo.toLowerCase().includes(s) || doc.crm.includes(s) || doc.cpf.includes(s)
-    const matchesStatus = filterStatus === 'all' || doc.status_cadastro === filterStatus
-    return matchesSearch && matchesStatus
-  })
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -136,29 +162,29 @@ export default function DoctorList() {
       case 'Aprovado':
         return 'bg-teal-500'
       case 'Inativo':
-        return 'bg-slate-500'
       case 'Rejeitado':
         return 'bg-red-500'
       case 'Rascunho':
-        return 'bg-amber-500'
+        return 'bg-slate-400'
       case 'Pendente de Revisão':
-        return 'bg-sky-500'
       case 'Pendente Documental':
-        return 'bg-indigo-500'
       case 'Pendente Contratual':
-        return 'bg-blue-500'
+        return 'bg-amber-500'
       default:
         return 'bg-primary'
     }
   }
 
-  const handleDelete = async (id: string) => {
+  const executeDelete = async () => {
+    if (!confirmDelete) return
     try {
-      await api.medicos.update(id, { ativo: false, status_cadastro: 'Inativo' })
-      await api.auditoria.log(id, 'Inativação de cadastro (Soft Delete)')
+      await api.medicos.update(confirmDelete, { ativo: false, status_cadastro: 'Inativo' })
+      await api.auditoria.log(confirmDelete, 'Inativação de cadastro (Soft Delete)')
       toast({ title: 'Médico Inativado' })
     } catch {
       toast({ title: 'Erro ao inativar', variant: 'destructive' })
+    } finally {
+      setConfirmDelete(null)
     }
   }
 
@@ -182,13 +208,14 @@ export default function DoctorList() {
   const applyFilter = (sf: any) => {
     setSearch(sf.configuracao_json?.search || '')
     setFilterStatus(sf.configuracao_json?.status || 'all')
+    setPage(1)
   }
 
   const handleExport = () => {
     const csvRows = [
       ['Nome', 'CPF', 'CRM', 'UF', 'Categoria', 'Contratacao', 'Status', 'SLA', 'Completude (%)'],
     ]
-    filteredDoctors.forEach((d) => {
+    doctors.forEach((d) => {
       const sla = getSLA(d)?.label || 'Concluido'
       csvRows.push([
         `"${d.nome_completo}"`,
@@ -211,13 +238,31 @@ export default function DoctorList() {
     a.download = 'medicos.csv'
     a.click()
     toast({ title: 'Exportação iniciada' })
-    if (user && filteredDoctors[0]) {
-      api.auditoria.log(filteredDoctors[0].id, 'Relatório Exportado (Lista de Médicos)')
-    }
   }
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
+      <AlertDialog open={!!confirmDelete} onOpenChange={(open) => !open && setConfirmDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar Inativação</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja inativar este médico? Ele não aparecerá mais como ativo no
+              sistema.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={executeDelete}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              Inativar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-primary">Médicos</h1>
@@ -244,11 +289,20 @@ export default function DoctorList() {
                 placeholder="Buscar por nome, CPF ou CRM..."
                 className="pl-9"
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => {
+                  setSearch(e.target.value)
+                  setPage(1)
+                }}
               />
             </div>
 
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
+            <Select
+              value={filterStatus}
+              onValueChange={(v) => {
+                setFilterStatus(v)
+                setPage(1)
+              }}
+            >
               <SelectTrigger className="w-full sm:w-[220px]">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
@@ -278,7 +332,7 @@ export default function DoctorList() {
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="outline" className="gap-2">
-                      <Bookmark className="w-4 h-4" /> Filtros Salvos
+                      <Bookmark className="w-4 h-4" /> Filtros
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent>
@@ -308,17 +362,44 @@ export default function DoctorList() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredDoctors.length === 0 ? (
+              {loading ? (
+                Array.from({ length: 5 }).map((_, i) => (
+                  <TableRow key={i}>
+                    <TableCell>
+                      <Skeleton className="h-10 w-48" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-5 w-16" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-8 w-24" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-8 w-32" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-6 w-20" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-8 w-8" />
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : doctors.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
                     Nenhum médico encontrado.
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredDoctors.map((doc) => {
+                doctors.map((doc) => {
                   const comp = getCompleteness(doc)
                   const sla = getSLA(doc)
                   const isCritical = checkCriticalAlert(doc)
+                  const displayCpf =
+                    role === 'Administrador'
+                      ? maskCpf(doc.cpf || '')
+                      : partiallyMaskCpf(doc.cpf || '')
 
                   return (
                     <TableRow key={doc.id} className="group">
@@ -336,7 +417,7 @@ export default function DoctorList() {
                           <div className="flex flex-col max-w-[200px] truncate">
                             <span className="truncate">{doc.nome_completo}</span>
                             <span className="text-xs text-muted-foreground truncate">
-                              {doc.email || doc.telefone || 'Sem contato'}
+                              CPF: {displayCpf}
                             </span>
                           </div>
                         </div>
@@ -400,7 +481,7 @@ export default function DoctorList() {
                             {role === 'Administrador' && doc.status_cadastro !== 'Inativo' && (
                               <DropdownMenuItem
                                 className="text-destructive"
-                                onClick={() => handleDelete(doc.id)}
+                                onClick={() => setConfirmDelete(doc.id)}
                               >
                                 <Trash2 className="mr-2 h-4 w-4" /> Inativar
                               </DropdownMenuItem>
@@ -414,6 +495,34 @@ export default function DoctorList() {
               )}
             </TableBody>
           </Table>
+
+          {!loading && totalPages > 1 && (
+            <div className="p-4 border-t">
+              <Pagination>
+                <PaginationContent>
+                  <PaginationItem>
+                    <PaginationPrevious
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      className={page === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                    />
+                  </PaginationItem>
+                  <PaginationItem>
+                    <span className="text-sm text-muted-foreground px-4">
+                      Página {page} de {totalPages}
+                    </span>
+                  </PaginationItem>
+                  <PaginationItem>
+                    <PaginationNext
+                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                      className={
+                        page === totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'
+                      }
+                    />
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

@@ -5,6 +5,16 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
   ArrowLeft,
   Edit,
   FileText,
@@ -18,7 +28,7 @@ import {
 import { api } from '@/services/api'
 import { useRealtime } from '@/hooks/use-realtime'
 import { useAuth } from '@/hooks/use-auth'
-import { maskCpf, maskCnpj, maskPhone } from '@/utils/masks'
+import { maskCpf, maskCnpj, maskPhone, partiallyMaskCpf } from '@/utils/masks'
 import { useToast } from '@/hooks/use-toast'
 
 export default function DoctorDetails() {
@@ -33,23 +43,32 @@ export default function DoctorDetails() {
   const [contract, setContract] = useState<any>(null)
   const [docs, setDocs] = useState<any[]>([])
   const [activities, setActivities] = useState<any[]>([])
+  const [config, setConfig] = useState<any>(null)
+
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean
+    action: 'reject' | 'inactivate' | null
+  }>({ isOpen: false, action: null })
+
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const loadData = async () => {
     if (!id) return
     try {
-      const [d, p, c, doxs, acts] = await Promise.all([
+      const [d, p, c, doxs, acts, cfg] = await Promise.all([
         api.medicos.get(id),
         api.dadosPj.getByMedico(id),
         api.contratos.getByMedico(id),
         api.documentos.listByMedico(id),
         api.auditoria.listByMedico(id),
+        api.configuracoes.get(),
       ])
       setDoctor(d)
       setPj(p)
       setContract(c)
       setDocs(doxs)
       setActivities(acts)
+      setConfig(cfg)
     } catch (e) {
       console.error(e)
     }
@@ -62,39 +81,64 @@ export default function DoctorDetails() {
   useRealtime('auditoria_medicos', () => loadData())
   useRealtime('documentos_medicos', () => loadData())
 
-  if (!doctor) return <div className="p-8 text-center">Carregando médico...</div>
+  if (!doctor)
+    return (
+      <div className="p-8 text-center flex items-center justify-center h-[50vh]">
+        <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full"></div>
+      </div>
+    )
+
+  const activeDocs = docs.filter((d) => d.ativo !== false)
+  const historyDocs = docs.filter((d) => d.ativo === false)
+
+  const validateWorkflow = () => {
+    if (!config?.documentos_obrigatorios) return true
+    const required = config.documentos_obrigatorios[doctor.categoria_medico] || []
+    const validDocs = activeDocs
+      .filter((d) => d.status_validacao === 'Validado')
+      .map((d) => d.categoria_documento)
+    const missing = required.filter((r: string) => !validDocs.includes(r))
+
+    if (missing.length > 0) {
+      toast({
+        title: 'Documentação Pendente',
+        description: `Faltam documentos validados: ${missing.join(', ')}`,
+        variant: 'destructive',
+      })
+      return false
+    }
+    return true
+  }
 
   const handleApprove = async () => {
-    await api.medicos.update(doctor.id, { status_cadastro: 'Aprovado' })
-    await api.auditoria.log(doctor.id, 'Aprovação de Cadastro')
-    if (user) {
-      await api.notificacoes.list(user.id).then(async (notifs) => {
-        const toResolve = notifs.filter((n) => n.link === `/medicos/${doctor.id}` && !n.lida)
-        for (const n of toResolve) {
-          await api.notificacoes.markAsRead(n.id)
-        }
-      })
+    if (!validateWorkflow()) return
+    try {
+      await api.medicos.update(doctor.id, { status_cadastro: 'Aprovado' })
+      await api.auditoria.log(doctor.id, 'Aprovação de Cadastro')
+      toast({ title: 'Cadastro Aprovado' })
+    } catch {
+      toast({ title: 'Erro ao aprovar', variant: 'destructive' })
     }
-    toast({ title: 'Cadastro Aprovado' })
   }
 
-  const handleInactivate = async () => {
-    await api.medicos.update(doctor.id, { status_cadastro: 'Inativo', ativo: false })
-    await api.auditoria.log(doctor.id, 'Inativação de Cadastro')
-    toast({ title: 'Cadastro Inativado' })
-  }
-
-  const handleReject = async () => {
-    await api.medicos.update(doctor.id, { status_cadastro: 'Rejeitado' })
-    await api.auditoria.log(doctor.id, 'Rejeição de Cadastro')
-    toast({ title: 'Cadastro Rejeitado' })
+  const handleConfirmAction = async () => {
+    if (confirmDialog.action === 'inactivate') {
+      await api.medicos.update(doctor.id, { status_cadastro: 'Inativo', ativo: false })
+      await api.auditoria.log(doctor.id, 'Inativação de Cadastro')
+      toast({ title: 'Cadastro Inativado' })
+    } else if (confirmDialog.action === 'reject') {
+      await api.medicos.update(doctor.id, { status_cadastro: 'Rejeitado' })
+      await api.auditoria.log(doctor.id, 'Rejeição de Cadastro')
+      toast({ title: 'Cadastro Rejeitado' })
+    }
+    setConfirmDialog({ isOpen: false, action: null })
   }
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return
     try {
       const form = new FormData()
-      form.append('arquivos_enviados', e.target.files[0]) // mock
+      form.append('arquivos_enviados', e.target.files[0]) // mock field
       form.append('medico_id', doctor.id)
       form.append('nome_arquivo', e.target.files[0].name)
       form.append('categoria_documento', 'Outro')
@@ -117,17 +161,14 @@ export default function DoctorDetails() {
       case 'Aprovado':
         return 'bg-teal-500'
       case 'Inativo':
-        return 'bg-slate-500'
       case 'Rejeitado':
         return 'bg-red-500'
       case 'Rascunho':
-        return 'bg-amber-500'
+        return 'bg-slate-400'
       case 'Pendente de Revisão':
-        return 'bg-sky-500'
       case 'Pendente Documental':
-        return 'bg-indigo-500'
       case 'Pendente Contratual':
-        return 'bg-blue-500'
+        return 'bg-amber-500'
       default:
         return 'bg-primary'
     }
@@ -147,9 +188,6 @@ export default function DoctorDetails() {
         return ''
     }
   }
-
-  const activeDocs = docs.filter((d) => d.ativo !== false)
-  const historyDocs = docs.filter((d) => d.ativo === false)
 
   const InfoRow = ({ label, value }: { label: string; value?: string }) => (
     <div className="flex flex-col space-y-1">
@@ -172,6 +210,30 @@ export default function DoctorDetails() {
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
+      <AlertDialog
+        open={confirmDialog.isOpen}
+        onOpenChange={(open) => !open && setConfirmDialog({ isOpen: false, action: null })}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar Ação</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja {confirmDialog.action === 'reject' ? 'rejeitar' : 'inativar'}{' '}
+              este cadastro? Esta ação afetará a disponibilidade do médico no sistema.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmAction}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => navigate('/medicos')}>
@@ -207,14 +269,18 @@ export default function DoctorDetails() {
                 <Button
                   variant="outline"
                   className="text-destructive border-destructive hover:bg-destructive/10 gap-2"
-                  onClick={handleReject}
+                  onClick={() => setConfirmDialog({ isOpen: true, action: 'reject' })}
                 >
                   <XCircle className="w-4 h-4" /> Rejeitar
                 </Button>
               </>
             )}
           {role === 'Administrador' && doctor.status_cadastro !== 'Inativo' && (
-            <Button variant="outline" className="text-slate-600 gap-2" onClick={handleInactivate}>
+            <Button
+              variant="outline"
+              className="text-slate-600 gap-2"
+              onClick={() => setConfirmDialog({ isOpen: true, action: 'inactivate' })}
+            >
               <Ban className="w-4 h-4" /> Inativar
             </Button>
           )}
@@ -240,7 +306,14 @@ export default function DoctorDetails() {
             </CardHeader>
             <CardContent className="p-6">
               <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
-                <InfoRow label="CPF" value={maskCpf(doctor.cpf || '')} />
+                <InfoRow
+                  label="CPF"
+                  value={
+                    role === 'Administrador'
+                      ? maskCpf(doctor.cpf || '')
+                      : partiallyMaskCpf(doctor.cpf || '')
+                  }
+                />
                 <InfoRow label="E-mail" value={doctor.email} />
                 <InfoRow
                   label="Telefone"
@@ -396,7 +469,24 @@ export default function DoctorDetails() {
                       <div className="font-semibold text-sm leading-tight text-primary/90">
                         {act.acao}
                       </div>
-                      <div className="text-xs text-muted-foreground mt-0.5">
+                      {(act.valor_anterior || act.valor_novo) && (
+                        <div className="text-xs mt-1 bg-muted/30 p-1.5 rounded border">
+                          {act.valor_anterior && (
+                            <div
+                              className="text-red-500 line-through truncate"
+                              title={act.valor_anterior}
+                            >
+                              {act.valor_anterior}
+                            </div>
+                          )}
+                          {act.valor_novo && (
+                            <div className="text-emerald-600 truncate" title={act.valor_novo}>
+                              {act.valor_novo}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      <div className="text-xs text-muted-foreground mt-1">
                         Por {act.expand?.usuario_id?.name || 'Sistema'}
                       </div>
                       <div className="text-[10px] text-muted-foreground mt-1.5 border-t pt-1.5">

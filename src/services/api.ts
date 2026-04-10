@@ -3,6 +3,22 @@ import pb from '@/lib/pocketbase/client'
 export const api = {
   medicos: {
     list: () => pb.collection('medicos').getFullList({ sort: '-created' }),
+    listPaginated: (page: number, perPage: number, search: string, status: string) => {
+      const filters: string[] = []
+      if (search) {
+        const s = search.replace(/\D/g, '')
+        if (s) {
+          filters.push(`(cpf ~ "${s}" || crm ~ "${search}" || nome_completo ~ "${search}")`)
+        } else {
+          filters.push(`(nome_completo ~ "${search}" || crm ~ "${search}")`)
+        }
+      }
+      if (status && status !== 'all') {
+        filters.push(`status_cadastro = "${status}"`)
+      }
+      const filter = filters.length > 0 ? filters.join(' && ') : ''
+      return pb.collection('medicos').getList(page, perPage, { sort: '-created', filter })
+    },
     get: (id: string) => pb.collection('medicos').getOne(id),
     create: (data: any) => pb.collection('medicos').create(data),
     update: (id: string, data: any) => pb.collection('medicos').update(id, data),
@@ -30,7 +46,9 @@ export const api = {
     },
     getByMedico: async (medicoId: string) => {
       try {
-        return await pb.collection('contratos_medicos').getFirstListItem(`medico_id="${medicoId}"`)
+        return await pb
+          .collection('contratos_medicos')
+          .getFirstListItem(`medico_id="${medicoId}" && ativo=true`, { sort: '-created' })
       } catch {
         return null
       }
