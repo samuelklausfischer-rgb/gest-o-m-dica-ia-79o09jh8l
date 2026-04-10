@@ -40,11 +40,12 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Input } from '@/components/ui/input'
-import useMainStore from '@/stores/useMainStore'
+import { useAuth } from '@/hooks/use-auth'
 
 export default function Layout() {
   const location = useLocation()
-  const { role, setRole } = useMainStore()
+  const { user, signOut } = useAuth()
+  const role = user?.name === 'Admin' ? 'Administrador' : 'Operacional'
 
   const getBreadcrumbs = () => {
     const paths = location.pathname.split('/').filter(Boolean)
@@ -129,7 +130,10 @@ export default function Layout() {
             </SidebarMenu>
           </SidebarContent>
           <SidebarFooter className="p-4 border-t border-sidebar-border">
-            <SidebarMenuButton className="text-sidebar-foreground/70 hover:text-sidebar-foreground">
+            <SidebarMenuButton
+              onClick={signOut}
+              className="text-sidebar-foreground/70 hover:text-sidebar-foreground cursor-pointer"
+            >
               <LogOut className="w-4 h-4" />
               <span>Sair do sistema</span>
             </SidebarMenuButton>
@@ -163,7 +167,7 @@ export default function Layout() {
                       <AvatarFallback>AD</AvatarFallback>
                     </Avatar>
                     <div className="hidden sm:flex flex-col items-start text-sm">
-                      <span className="font-semibold leading-none">Dra. Admin</span>
+                      <span className="font-semibold leading-none">{user?.name || 'Usuário'}</span>
                       <span className="text-xs text-muted-foreground leading-none mt-1">
                         {role}
                       </span>
@@ -173,20 +177,7 @@ export default function Layout() {
                 <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuLabel>Minha Conta</DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={() => setRole('Administrador')}
-                    className="cursor-pointer"
-                  >
-                    Trocar para Administrador {role === 'Administrador' && '✓'}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => setRole('Operacional')}
-                    className="cursor-pointer"
-                  >
-                    Trocar para Operacional {role === 'Operacional' && '✓'}
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem className="text-destructive cursor-pointer">
+                  <DropdownMenuItem onClick={signOut} className="text-destructive cursor-pointer">
                     Sair
                   </DropdownMenuItem>
                 </DropdownMenuContent>

@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -7,44 +8,55 @@ import {
   Users,
   FileCheck,
   FileWarning,
-  Briefcase,
-  FileSignature,
   Clock,
+  FileSignature,
 } from 'lucide-react'
-import useMainStore from '@/stores/useMainStore'
 import { Pie, PieChart, Cell, ResponsiveContainer } from 'recharts'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
+import { api } from '@/services/api'
+import { useRealtime } from '@/hooks/use-realtime'
 
 export default function Index() {
-  const { doctors, activities } = useMainStore()
+  const [doctors, setDoctors] = useState<any[]>([])
+  const [activities, setActivities] = useState<any[]>([])
+
+  const loadData = async () => {
+    try {
+      const [docs, acts] = await Promise.all([api.medicos.list(), api.auditoria.listRecent()])
+      setDoctors(docs)
+      setActivities(acts.items)
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  useEffect(() => {
+    loadData()
+  }, [])
+  useRealtime('medicos', () => loadData())
+  useRealtime('auditoria_medicos', () => loadData())
 
   const stats = {
     total: doctors.length,
-    signed: doctors.filter((d) => d.contratoAssinado).length,
-    unsigned: doctors.filter((d) => !d.contratoAssinado).length,
-    pj: doctors.filter((d) => d.tipoContratacao === 'PJ').length,
-    scp: doctors.filter((d) => d.tipoContratacao === 'SCP').length,
-    pending: doctors.filter((d) => d.status === 'Pendente de Revisão').length,
-    drafts: doctors.filter((d) => d.status === 'Rascunho').length,
+    signed: doctors.filter((d) => d.contrato_assinado).length,
+    unsigned: doctors.filter((d) => !d.contrato_assinado).length,
+    pj: doctors.filter((d) => d.tipo_contratacao === 'PJ').length,
+    scp: doctors.filter((d) => d.tipo_contratacao === 'SCP').length,
+    pending: doctors.filter((d) => d.status_cadastro === 'Pendente de Revisão').length,
+    drafts: doctors.filter((d) => d.status_cadastro === 'Rascunho').length,
   }
 
-  const categoryData = Object.values(
+  const categoryData = Object.entries(
     doctors.reduce(
       (acc, curr) => {
-        acc[curr.categoria] = (acc[curr.categoria] || 0) + 1
+        acc[curr.categoria_medico] = (acc[curr.categoria_medico] || 0) + 1
         return acc
       },
       {} as Record<string, number>,
     ),
-  ).map((val, idx) => ({
-    name: Object.keys(doctors.reduce((a, c) => ({ ...a, [c.categoria]: 1 }), {}))[idx],
-    value: val,
-  }))
+  ).map(([name, value]) => ({ name, value }))
 
-  const chartConfig = {
-    value: { label: 'Médicos' },
-  }
-
+  const chartConfig = { value: { label: 'Médicos' } }
   const COLORS = [
     'hsl(var(--chart-1))',
     'hsl(var(--chart-2))',
@@ -108,7 +120,7 @@ export default function Index() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.pending}</div>
-            <p className="text-xs opacity-80 mt-1">Aguardando aprovação</p>
+            <p className="text-xs opacity-80 mt-1">Aguardando aprovação de IA</p>
           </CardContent>
         </Card>
       </div>
@@ -159,22 +171,25 @@ export default function Index() {
         <Card className="col-span-1 lg:col-span-2 shadow-sm">
           <CardHeader>
             <CardTitle>Atividade Recente</CardTitle>
-            <CardDescription>Últimas 5 atualizações no sistema.</CardDescription>
+            <CardDescription>Últimas atualizações no sistema.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-6">
-              {activities.slice(0, 5).map((activity) => (
-                <div key={activity.id} className="flex gap-4">
+              {activities.map((act) => (
+                <div key={act.id} className="flex gap-4">
                   <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                     <FileSignature className="w-4 h-4 text-primary" />
                   </div>
                   <div className="flex-1 space-y-1">
                     <p className="text-sm font-medium leading-none">
-                      {activity.acao} - <span className="text-primary">{activity.medicoNome}</span>
+                      {act.acao} -{' '}
+                      <span className="text-primary">
+                        {act.expand?.medico_id?.nome_completo || 'Médico'}
+                      </span>
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      Por {activity.usuario} em{' '}
-                      {new Date(activity.timestamp).toLocaleString('pt-BR')}
+                      Por {act.expand?.usuario_id?.name || 'Sistema'} em{' '}
+                      {new Date(act.created).toLocaleString('pt-BR')}
                     </p>
                   </div>
                 </div>

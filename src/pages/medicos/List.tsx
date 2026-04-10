@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import {
@@ -27,21 +27,36 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { MoreHorizontal, Download, Eye, Edit, Trash2, Search } from 'lucide-react'
-import useMainStore from '@/stores/useMainStore'
 import { useToast } from '@/hooks/use-toast'
+import { api } from '@/services/api'
+import { useRealtime } from '@/hooks/use-realtime'
+import { useAuth } from '@/hooks/use-auth'
 
 export default function DoctorList() {
-  const { doctors, deleteDoctor, role } = useMainStore()
+  const { user } = useAuth()
+  const role = user?.name === 'Admin' ? 'Administrador' : 'Operacional'
   const { toast } = useToast()
+  const [doctors, setDoctors] = useState<any[]>([])
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState<string>('all')
 
+  const loadData = async () => {
+    try {
+      const docs = await api.medicos.list()
+      setDoctors(docs)
+    } catch (e) {}
+  }
+
+  useEffect(() => {
+    loadData()
+  }, [])
+  useRealtime('medicos', () => loadData())
+
   const filteredDoctors = doctors.filter((doc) => {
+    const s = search.toLowerCase()
     const matchesSearch =
-      doc.nome.toLowerCase().includes(search.toLowerCase()) ||
-      doc.crm.includes(search) ||
-      doc.cpf.includes(search)
-    const matchesStatus = filterStatus === 'all' || doc.status === filterStatus
+      doc.nome_completo.toLowerCase().includes(s) || doc.crm.includes(s) || doc.cpf.includes(s)
+    const matchesStatus = filterStatus === 'all' || doc.status_cadastro === filterStatus
     return matchesSearch && matchesStatus
   })
 
@@ -60,8 +75,37 @@ export default function DoctorList() {
     }
   }
 
+  const handleDelete = async (id: string, name: string) => {
+    try {
+      await api.medicos.update(id, { ativo: false, status_cadastro: 'Inativo' })
+      await api.auditoria.log(id, 'Inativação de cadastro (Soft Delete)')
+      toast({ title: 'Médico Inativado' })
+    } catch {
+      toast({ title: 'Erro ao inativar', variant: 'destructive' })
+    }
+  }
+
   const handleExport = () => {
-    toast({ title: 'Exportação iniciada', description: 'O download do CSV começará em instantes.' })
+    const csvRows = [['Nome', 'CPF', 'CRM', 'UF', 'Categoria', 'Contratacao', 'Status', 'Origem']]
+    filteredDoctors.forEach((d) => {
+      csvRows.push([
+        d.nome_completo,
+        d.cpf,
+        d.crm,
+        d.uf_crm,
+        d.categoria_medico,
+        d.tipo_contratacao,
+        d.status_cadastro,
+        d.origem_cadastro,
+      ])
+    })
+    const blob = new Blob([csvRows.map((r) => r.join(',')).join('\n')], { type: 'text/csv' })
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'medicos.csv'
+    a.click()
+    toast({ title: 'Exportação iniciada' })
   }
 
   return (
@@ -133,24 +177,26 @@ export default function DoctorList() {
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
-                          {doc.nome.substring(0, 2).toUpperCase()}
+                          {doc.nome_completo.substring(0, 2).toUpperCase()}
                         </div>
                         <div className="flex flex-col">
-                          <span>{doc.nome}</span>
-                          <span className="text-xs text-muted-foreground">{doc.email}</span>
+                          <span>{doc.nome_completo}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {doc.email || 'Sem e-mail'}
+                          </span>
                         </div>
                       </div>
                     </TableCell>
                     <TableCell>
-                      {doc.crm}/{doc.ufCrm}
+                      {doc.crm}/{doc.uf_crm}
                     </TableCell>
                     <TableCell>
                       <span className="text-xs border px-2 py-1 rounded-md bg-muted/50">
-                        {doc.categoria}
+                        {doc.categoria_medico}
                       </span>
                     </TableCell>
                     <TableCell>
-                      {doc.contratoAssinado ? (
+                      {doc.contrato_assinado ? (
                         <Badge
                           variant="outline"
                           className="text-emerald-600 border-emerald-200 bg-emerald-50"
@@ -167,7 +213,9 @@ export default function DoctorList() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <Badge className={getStatusColor(doc.status)}>{doc.status}</Badge>
+                      <Badge className={getStatusColor(doc.status_cadastro)}>
+                        {doc.status_cadastro}
+                      </Badge>
                     </TableCell>
                     <TableCell>
                       <DropdownMenu>
@@ -191,12 +239,12 @@ export default function DoctorList() {
                               <Edit className="mr-2 h-4 w-4" /> Editar
                             </Link>
                           </DropdownMenuItem>
-                          {role === 'Administrador' && (
+                          {role === 'Administrador' && doc.status_cadastro !== 'Inativo' && (
                             <DropdownMenuItem
                               className="text-destructive"
-                              onClick={() => deleteDoctor(doc.id)}
+                              onClick={() => handleDelete(doc.id, doc.nome_completo)}
                             >
-                              <Trash2 className="mr-2 h-4 w-4" /> Excluir
+                              <Trash2 className="mr-2 h-4 w-4" /> Inativar
                             </DropdownMenuItem>
                           )}
                         </DropdownMenuContent>

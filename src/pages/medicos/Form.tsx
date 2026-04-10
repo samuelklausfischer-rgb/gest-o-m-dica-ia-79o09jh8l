@@ -17,31 +17,33 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { useToast } from '@/hooks/use-toast'
-import useMainStore from '@/stores/useMainStore'
+import { api } from '@/services/api'
+import { useAuth } from '@/hooks/use-auth'
 import { ArrowLeft, Save, CheckCircle, Clock } from 'lucide-react'
-import { Doctor } from '@/types'
 
 const formSchema = z.object({
-  nome: z.string().min(3, 'Nome muito curto'),
+  nome_completo: z.string().min(3, 'Nome muito curto'),
   cpf: z.string().min(11, 'CPF inválido'),
-  dataNascimento: z.string().min(1, 'Data obrigatória'),
-  email: z.string().email('E-mail inválido'),
-  telefone: z.string().min(10, 'Telefone inválido'),
+  email: z.string().email('E-mail inválido').or(z.literal('')),
+  telefone: z.string().optional(),
   crm: z.string().min(4, 'CRM inválido'),
-  ufCrm: z.string().min(2, 'UF obrigatório'),
+  uf_crm: z.string().min(2, 'UF obrigatório'),
   rqe: z.string().optional(),
   especialidade: z.string().min(3, 'Especialidade obrigatória'),
   cnes: z.string().optional(),
-  categoria: z.enum(['MEDICO PRN', 'MEDICO PALHOÇA', 'MEDICO APICE TELE', 'MEDICO TELEIMAGEM']),
-  tipoContratacao: z.enum(['SCP', 'PJ']),
-  contratoAssinado: z.boolean(),
-  dataAssinatura: z.string().optional(),
-  vigenciaInicio: z.string().optional(),
-  vigenciaFim: z.string().optional(),
-  modeloRemuneracao: z.enum(['Fixo', 'Plantão', 'Hora', 'Produção', 'Outro']).optional(),
-  valorAcordado: z.string().optional(),
-  pjRazaoSocial: z.string().optional(),
-  pjCnpj: z.string().optional(),
+  categoria_medico: z.enum([
+    'MEDICO PRN',
+    'MEDICO PALHOÇA',
+    'MEDICO APICE TELE',
+    'MEDICO TELEIMAGEM',
+  ]),
+  tipo_contratacao: z.enum(['SCP', 'PJ']),
+  contrato_assinado: z.boolean(),
+  data_assinatura: z.string().optional(),
+  modelo_remuneracao: z.enum(['Fixo', 'Plantão', 'Hora', 'Produção', 'Outro']).optional(),
+  valor_acordado: z.string().optional(),
+  pj_razao_social: z.string().optional(),
+  pj_cnpj: z.string().optional(),
 })
 
 type FormValues = z.infer<typeof formSchema>
@@ -51,71 +53,122 @@ export default function DoctorForm() {
   const isEditing = !!id
   const navigate = useNavigate()
   const { toast } = useToast()
-  const { role, doctors, addDoctor, updateDoctor } = useMainStore()
+  const { user } = useAuth()
+  const role = user?.name === 'Admin' ? 'Administrador' : 'Operacional'
   const [activeTab, setActiveTab] = useState('pessoais')
 
   const methods = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      categoria: 'MEDICO PRN',
-      tipoContratacao: 'SCP',
-      contratoAssinado: false,
+      categoria_medico: 'MEDICO PRN',
+      tipo_contratacao: 'SCP',
+      contrato_assinado: false,
+      email: '',
     },
   })
 
   useEffect(() => {
     if (isEditing && id) {
-      const doc = doctors.find((d) => d.id === id)
-      if (doc) {
-        methods.reset(doc as any)
-      } else {
-        toast({ title: 'Erro', description: 'Médico não encontrado', variant: 'destructive' })
-        navigate('/medicos')
-      }
+      Promise.all([api.medicos.get(id), api.dadosPj.getByMedico(id), api.contratos.getByMedico(id)])
+        .then(([doc, pj, cont]) => {
+          methods.reset({
+            ...doc,
+            data_assinatura: cont?.data_assinatura ? cont.data_assinatura.split('T')[0] : '',
+            modelo_remuneracao: cont?.modelo_remuneracao || '',
+            valor_acordado: cont?.valor_acordado || '',
+            pj_cnpj: pj?.cnpj || '',
+            pj_razao_social: pj?.razao_social || '',
+          } as any)
+        })
+        .catch(() => {
+          toast({ title: 'Erro', description: 'Médico não encontrado', variant: 'destructive' })
+          navigate('/medicos')
+        })
     }
-  }, [id, isEditing, doctors, methods, navigate, toast])
+  }, [id, isEditing, methods, navigate, toast])
 
-  const watchCategoria = methods.watch('categoria')
-  const watchTipoContratacao = methods.watch('tipoContratacao')
+  const watchCategoria = methods.watch('categoria_medico')
+  const watchTipoContratacao = methods.watch('tipo_contratacao')
   const showContract = watchCategoria === 'MEDICO PRN' || watchCategoria === 'MEDICO PALHOÇA'
   const showPj = watchTipoContratacao === 'PJ'
 
-  const onSave = (data: FormValues, status: Doctor['status']) => {
-    // Mock duplicate check
-    const duplicate = doctors.find((d) => d.cpf === data.cpf && d.id !== id)
-    if (duplicate) {
-      toast({
-        title: 'Atenção',
-        description: 'CPF já cadastrado no sistema!',
-        variant: 'destructive',
-      })
-      return
+  const onSave = async (data: FormValues, status: string) => {
+    try {
+      const docData = {
+        nome_completo: data.nome_completo,
+        cpf: data.cpf,
+        crm: data.crm,
+        uf_crm: data.uf_crm,
+        rqe: data.rqe,
+        especialidade: data.especialidade,
+        email: data.email,
+        telefone: data.telefone,
+        cnes: data.cnes,
+        categoria_medico: data.categoria_medico,
+        tipo_contratacao: data.tipo_contratacao,
+        contrato_assinado: data.contrato_assinado,
+        status_cadastro: status,
+        ativo: status !== 'Inativo',
+        origem_cadastro: 'manual',
+      }
+
+      let medId = id
+      if (isEditing && id) {
+        await api.medicos.update(id, docData)
+        await api.auditoria.log(id, `Atualizou cadastro para ${status}`)
+      } else {
+        const res = await api.medicos.create(docData)
+        medId = res.id
+        await api.auditoria.log(res.id, 'Criação de cadastro manual')
+      }
+
+      if (medId) {
+        if (data.tipo_contratacao === 'PJ') {
+          const pjData = {
+            medico_id: medId,
+            cnpj: data.pj_cnpj,
+            razao_social: data.pj_razao_social,
+          }
+          const pj = await api.dadosPj.getByMedico(medId)
+          if (pj) await api.dadosPj.update(pj.id, pjData)
+          else await api.dadosPj.create(pjData)
+        }
+
+        if (showContract) {
+          const contData = {
+            medico_id: medId,
+            data_assinatura: data.data_assinatura
+              ? new Date(data.data_assinatura).toISOString()
+              : null,
+            modelo_remuneracao: data.modelo_remuneracao,
+            valor_acordado: data.valor_acordado,
+          }
+          const cont = await api.contratos.getByMedico(medId)
+          if (cont) await api.contratos.update(cont.id, contData)
+          else await api.contratos.create(contData)
+        }
+      }
+
+      toast({ title: 'Sucesso', description: 'Dados salvos com sucesso.' })
+      navigate('/medicos')
+    } catch (error: any) {
+      const err = error.response?.data
+      if (err?.cpf)
+        toast({ title: 'Atenção', description: 'CPF já cadastrado.', variant: 'destructive' })
+      else if (err?.crm)
+        toast({ title: 'Atenção', description: 'CRM já cadastrado.', variant: 'destructive' })
+      else
+        toast({
+          title: 'Erro',
+          description: 'Verifique os dados informados.',
+          variant: 'destructive',
+        })
     }
-
-    const docData = { ...data, status } as any
-
-    if (isEditing && id) {
-      updateDoctor(id, docData)
-      toast({ title: 'Sucesso', description: 'Dados atualizados com sucesso.' })
-    } else {
-      addDoctor(docData)
-      toast({ title: 'Sucesso', description: 'Médico cadastrado com sucesso.' })
-    }
-    navigate('/medicos')
   }
 
-  const handleDraft = () => {
-    const data = methods.getValues()
-    onSave(data, 'Rascunho')
-  }
-
-  const handleReview = () => {
-    methods.handleSubmit((data) => onSave(data, 'Pendente de Revisão'))()
-  }
-
-  const handleApprove = () => {
-    methods.handleSubmit((data) => onSave(data, 'Ativo'))()
-  }
+  const handleDraft = () => onSave(methods.getValues(), 'Rascunho')
+  const handleReview = () => methods.handleSubmit((data) => onSave(data, 'Pendente de Revisão'))()
+  const handleApprove = () => methods.handleSubmit((data) => onSave(data, 'Ativo'))()
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
@@ -167,7 +220,7 @@ export default function DoctorForm() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <FormField
                         control={methods.control}
-                        name="nome"
+                        name="nome_completo"
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel>Nome Completo *</FormLabel>
@@ -193,23 +246,10 @@ export default function DoctorForm() {
                       />
                       <FormField
                         control={methods.control}
-                        name="dataNascimento"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Data de Nascimento *</FormLabel>
-                            <FormControl>
-                              <Input type="date" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={methods.control}
                         name="email"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>E-mail *</FormLabel>
+                            <FormLabel>E-mail</FormLabel>
                             <FormControl>
                               <Input type="email" placeholder="joao@exemplo.com" {...field} />
                             </FormControl>
@@ -222,7 +262,7 @@ export default function DoctorForm() {
                         name="telefone"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Telefone *</FormLabel>
+                            <FormLabel>Telefone</FormLabel>
                             <FormControl>
                               <Input placeholder="(11) 99999-9999" {...field} />
                             </FormControl>
@@ -250,7 +290,7 @@ export default function DoctorForm() {
                       />
                       <FormField
                         control={methods.control}
-                        name="ufCrm"
+                        name="uf_crm"
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel>UF do CRM *</FormLabel>
@@ -307,7 +347,7 @@ export default function DoctorForm() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <FormField
                         control={methods.control}
-                        name="categoria"
+                        name="categoria_medico"
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel>Categoria *</FormLabel>
@@ -330,7 +370,7 @@ export default function DoctorForm() {
                       />
                       <FormField
                         control={methods.control}
-                        name="tipoContratacao"
+                        name="tipo_contratacao"
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel>Tipo de Contratação *</FormLabel>
@@ -357,7 +397,7 @@ export default function DoctorForm() {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <FormField
                           control={methods.control}
-                          name="contratoAssinado"
+                          name="contrato_assinado"
                           render={({ field }) => (
                             <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4 bg-muted/20 col-span-1 md:col-span-2">
                               <div className="space-y-0.5">
@@ -374,7 +414,7 @@ export default function DoctorForm() {
                         />
                         <FormField
                           control={methods.control}
-                          name="dataAssinatura"
+                          name="data_assinatura"
                           render={({ field }) => (
                             <FormItem>
                               <FormLabel>Data de Assinatura</FormLabel>
@@ -387,7 +427,7 @@ export default function DoctorForm() {
                         />
                         <FormField
                           control={methods.control}
-                          name="modeloRemuneracao"
+                          name="modelo_remuneracao"
                           render={({ field }) => (
                             <FormItem>
                               <FormLabel>Modelo de Remuneração</FormLabel>
@@ -411,7 +451,7 @@ export default function DoctorForm() {
                         />
                         <FormField
                           control={methods.control}
-                          name="valorAcordado"
+                          name="valor_acordado"
                           render={({ field }) => (
                             <FormItem>
                               <FormLabel>Valor Acordado (R$)</FormLabel>
@@ -431,7 +471,7 @@ export default function DoctorForm() {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <FormField
                           control={methods.control}
-                          name="pjCnpj"
+                          name="pj_cnpj"
                           render={({ field }) => (
                             <FormItem>
                               <FormLabel>CNPJ *</FormLabel>
@@ -444,7 +484,7 @@ export default function DoctorForm() {
                         />
                         <FormField
                           control={methods.control}
-                          name="pjRazaoSocial"
+                          name="pj_razao_social"
                           render={({ field }) => (
                             <FormItem>
                               <FormLabel>Razão Social *</FormLabel>

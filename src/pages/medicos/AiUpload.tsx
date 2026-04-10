@@ -11,50 +11,79 @@ import {
   AlertTriangle,
   Loader2,
   ArrowRight,
+  BrainCircuit,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
-import useMainStore from '@/stores/useMainStore'
+import { api } from '@/services/api'
 
 export default function AiUpload() {
   const [step, setStep] = useState<'upload' | 'processing' | 'review'>('upload')
-  const [formData, setFormData] = useState({ nome: '', cpf: '', crm: '', ufCrm: '' })
+  const [formData, setFormData] = useState({ nome_completo: '', cpf: '', crm: '', uf_crm: '' })
+  const [importId, setImportId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
   const navigate = useNavigate()
-  const { addDoctor } = useMainStore()
 
-  const handleFileDrop = (e: React.DragEvent) => {
-    e.preventDefault()
-    startProcessing()
-  }
-
-  const startProcessing = () => {
+  const handleFileDrop = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files?.length) return
     setStep('processing')
-    setTimeout(() => {
-      setFormData({
-        nome: 'Marcos Vinicius da Costa',
+    try {
+      const form = new FormData()
+      for (let i = 0; i < e.target.files.length; i++) {
+        form.append('arquivos_enviados', e.target.files[i])
+      }
+      const mockExtraction = {
+        nome_completo: 'Marcos Vinicius da Costa',
         cpf: '444.555.666-77',
         crm: '88990',
-        ufCrm: 'SP',
-      })
-      setStep('review')
-    }, 2500)
+        uf_crm: 'SP',
+      }
+      form.append('status_revisao', 'Pendente de Revisão')
+      form.append('json_extraido', JSON.stringify(mockExtraction))
+
+      const record = await api.ia.create(form)
+      setImportId(record.id)
+
+      setTimeout(() => {
+        setFormData(mockExtraction)
+        setStep('review')
+      }, 2000)
+    } catch (error) {
+      toast({ title: 'Erro', variant: 'destructive', description: 'Falha ao enviar documento.' })
+      setStep('upload')
+    }
   }
 
-  const handleSave = () => {
-    addDoctor({
-      ...formData,
-      dataNascimento: '1980-01-01',
-      email: 'ia.generated@exemplo.com',
-      telefone: '(00) 00000-0000',
-      especialidade: 'Clínica Médica',
-      categoria: 'MEDICO PRN',
-      tipoContratacao: 'SCP',
-      contratoAssinado: false,
-      status: 'Pendente de Revisão',
-    } as any)
-    toast({ title: 'Sucesso', description: 'Dados processados e salvos para revisão.' })
-    navigate('/medicos')
+  const handleSave = async () => {
+    try {
+      const docData = {
+        ...formData,
+        especialidade: 'Clínica Médica',
+        categoria_medico: 'MEDICO PRN',
+        tipo_contratacao: 'SCP',
+        contrato_assinado: false,
+        origem_cadastro: 'ia',
+        status_cadastro: 'Pendente de Revisão',
+        ativo: true,
+      }
+
+      const medicoRes = await api.medicos.create(docData)
+      if (importId) await api.ia.update(importId, { status_revisao: 'Aprovado' })
+      await api.auditoria.log(medicoRes.id, 'Criação de cadastro via Extração IA')
+
+      toast({ title: 'Sucesso', description: 'Dados processados e salvos para revisão final.' })
+      navigate('/medicos')
+    } catch (e: any) {
+      const err = e.response?.data
+      if (err?.cpf)
+        toast({
+          title: 'Atenção',
+          description: 'CPF já cadastrado no sistema.',
+          variant: 'destructive',
+        })
+      else
+        toast({ title: 'Erro', description: 'Falha ao confirmar dados.', variant: 'destructive' })
+    }
   }
 
   return (
@@ -82,8 +111,9 @@ export default function AiUpload() {
               type="file"
               hidden
               ref={fileInputRef}
-              onChange={startProcessing}
+              onChange={handleFileDrop}
               accept=".pdf,image/*"
+              multiple
             />
             <Button
               onClick={() => fileInputRef.current?.click()}
@@ -110,10 +140,9 @@ export default function AiUpload() {
 
       {step === 'review' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full min-h-[500px]">
-          {/* Document Preview */}
           <Card className="flex flex-col overflow-hidden bg-slate-100 dark:bg-slate-900 border shadow-inner">
             <div className="p-3 bg-card border-b flex items-center gap-2 text-sm font-medium">
-              <FileText className="w-4 h-4 text-muted-foreground" /> documento_crm.pdf
+              <FileText className="w-4 h-4 text-muted-foreground" /> documento_extraido.pdf
             </div>
             <div className="flex-1 p-6 flex justify-center items-center overflow-auto">
               <img
@@ -124,12 +153,10 @@ export default function AiUpload() {
             </div>
           </Card>
 
-          {/* Form Fields */}
           <Card className="flex flex-col shadow-sm">
             <div className="p-4 border-b bg-muted/20">
               <h3 className="font-semibold text-lg flex items-center gap-2">
-                <BrainCircuit className="w-5 h-5 text-secondary" />
-                Dados Extraídos
+                <BrainCircuit className="w-5 h-5 text-secondary" /> Dados Extraídos
               </h3>
               <p className="text-xs text-muted-foreground mt-1">
                 Revise os dados antes de confirmar.
@@ -146,11 +173,10 @@ export default function AiUpload() {
                   </div>
                   <Input
                     id="nome"
-                    value={formData.nome}
-                    onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
+                    value={formData.nome_completo}
+                    onChange={(e) => setFormData({ ...formData, nome_completo: e.target.value })}
                   />
                 </div>
-
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="cpf">CPF</Label>
@@ -164,7 +190,6 @@ export default function AiUpload() {
                     onChange={(e) => setFormData({ ...formData, cpf: e.target.value })}
                   />
                 </div>
-
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="crm">CRM</Label>
@@ -178,19 +203,19 @@ export default function AiUpload() {
                     <Label htmlFor="ufCrm">UF CRM</Label>
                     <Input
                       id="ufCrm"
-                      value={formData.ufCrm}
-                      onChange={(e) => setFormData({ ...formData, ufCrm: e.target.value })}
+                      value={formData.uf_crm}
+                      onChange={(e) => setFormData({ ...formData, uf_crm: e.target.value })}
                     />
                   </div>
                 </div>
               </div>
-
               <div className="bg-primary/5 p-4 rounded-lg border border-primary/10">
                 <p className="text-sm text-primary font-medium flex items-center gap-2 mb-1">
                   <AlertTriangle className="w-4 h-4" /> Informações Ausentes
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  E-mail e Telefone não foram identificados no documento.
+                  E-mail, Telefone e Especialidade não foram identificados. Preenchimento manual
+                  necessário posteriormente.
                 </p>
               </div>
             </CardContent>
@@ -199,7 +224,7 @@ export default function AiUpload() {
                 Cancelar
               </Button>
               <Button onClick={handleSave} className="bg-secondary hover:bg-secondary/90 gap-2">
-                Confirmar Dados <ArrowRight className="w-4 h-4" />
+                Aprovar Extração <ArrowRight className="w-4 h-4" />
               </Button>
             </div>
           </Card>
