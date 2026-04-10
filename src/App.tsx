@@ -14,6 +14,7 @@ import Reports from './pages/Reports'
 import Settings from './pages/Settings'
 import Login from './pages/Login'
 import { AuthProvider, useAuth } from './hooks/use-auth'
+import { useEffect } from 'react'
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth()
@@ -46,16 +47,22 @@ const AppRoutes = () => (
   </Routes>
 )
 
-const App = () => (
-  <BrowserRouter future={{ v7_startTransition: false, v7_relativeSplatPath: false }}>
-    <AuthProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <AppRoutes />
-      </TooltipProvider>
-    </AuthProvider>
-  </BrowserRouter>
-)
+const App = () => {
+  useEffect(() => {
+    document.documentElement.classList.add('dark')
+  }, [])
+
+  return (
+    <BrowserRouter future={{ v7_startTransition: false, v7_relativeSplatPath: false }}>
+      <AuthProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <AppRoutes />
+        </TooltipProvider>
+      </AuthProvider>
+    </BrowserRouter>
+  )
+}
 
 export default App

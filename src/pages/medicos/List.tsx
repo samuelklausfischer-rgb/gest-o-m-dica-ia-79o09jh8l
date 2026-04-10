@@ -18,7 +18,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import {
   DropdownMenu,
@@ -155,37 +154,37 @@ export default function DoctorList() {
     if (['Ativo', 'Aprovado', 'Inativo'].includes(doc.status_cadastro)) return null
     const days = Math.floor((Date.now() - new Date(doc.created).getTime()) / (1000 * 3600 * 24))
     if (days > 15)
-      return { label: 'SLA: Atrasado', color: 'bg-red-100 text-red-700 border-red-200' }
+      return { label: 'Atrasado', class: 'bg-red-500/20 text-red-400 border-red-500/30' }
     if (days > 7)
-      return { label: 'SLA: Atenção', color: 'bg-amber-100 text-amber-700 border-amber-200' }
-    return { label: 'SLA: No Prazo', color: 'bg-emerald-100 text-emerald-700 border-emerald-200' }
+      return { label: 'Atenção', class: 'bg-amber-500/20 text-amber-400 border-amber-500/30' }
+    return { label: 'No Prazo', class: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' }
   }
 
-  const checkCriticalAlert = (doc: any) => {
-    return (
-      (doc.categoria_medico === 'MEDICO PRN' || doc.categoria_medico === 'MEDICO PALHOÇA') &&
-      !doc.contrato_assinado
-    )
-  }
-
-  const getStatusColor = (status: string) => {
+  const getStatusBadge = (status: string) => {
+    let style = ''
     switch (status) {
       case 'Ativo':
-        return 'bg-emerald-500'
+        style = 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+        break
       case 'Aprovado':
-        return 'bg-teal-500'
+        style = 'bg-teal-500/20 text-teal-400 border-teal-500/30'
+        break
       case 'Inativo':
       case 'Rejeitado':
-        return 'bg-red-500'
+        style = 'bg-red-500/20 text-red-400 border-red-500/30'
+        break
       case 'Rascunho':
-        return 'bg-slate-400'
+        style = 'bg-slate-500/20 text-slate-400 border-slate-500/30'
+        break
       case 'Pendente de Revisão':
       case 'Pendente Documental':
       case 'Pendente Contratual':
-        return 'bg-amber-500'
+        style = 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+        break
       default:
-        return 'bg-primary'
+        style = 'bg-primary/20 text-primary border-primary/30'
     }
+    return <span className={`premium-badge ${style}`}>{status}</span>
   }
 
   const executeDelete = async () => {
@@ -273,20 +272,22 @@ export default function DoctorList() {
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       <AlertDialog open={!!confirmDelete} onOpenChange={(open) => !open && setConfirmDelete(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent className="glass-card">
           <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar Inativação</AlertDialogTitle>
+            <AlertDialogTitle className="text-white">Confirmar Inativação</AlertDialogTitle>
             <AlertDialogDescription>
               Tem certeza que deseja inativar este médico? Ele não aparecerá mais como ativo no
               sistema.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel className="bg-transparent border-white/10 text-white hover:bg-white/5">
+              Cancelar
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={executeDelete}
               disabled={isDeleting}
-              className="bg-destructive hover:bg-destructive/90"
+              className="bg-destructive hover:bg-destructive/90 text-white"
             >
               {isDeleting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
               Inativar
@@ -297,13 +298,18 @@ export default function DoctorList() {
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-primary">Médicos</h1>
-          <p className="text-muted-foreground mt-1">
+          <h1 className="text-3xl font-bold tracking-tight text-white">Médicos</h1>
+          <p className="text-muted-foreground mt-1 text-sm font-medium">
             Gerencie a base de médicos cadastrados e acompanhe SLAs.
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={handleExport} disabled={isExporting} className="gap-2">
+          <Button
+            variant="outline"
+            onClick={handleExport}
+            disabled={isExporting}
+            className="gap-2 bg-transparent border-white/10 hover:bg-white/5"
+          >
             {isExporting ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
@@ -311,20 +317,20 @@ export default function DoctorList() {
             )}
             {isExporting ? 'Exportando...' : 'Exportar'}
           </Button>
-          <Button asChild className="gap-2">
+          <Button asChild className="gap-2 bg-primary text-white hover:bg-primary/90 shadow-glow">
             <Link to="/medicos/novo">Novo Cadastro</Link>
           </Button>
         </div>
       </div>
 
-      <Card className="shadow-sm">
-        <CardHeader className="py-4 px-6 border-b bg-muted/20">
+      <Card className="glass-card">
+        <CardHeader className="py-4 px-6 border-b border-white/5 bg-white/[0.02]">
           <div className="flex flex-col sm:flex-row gap-4 items-center">
-            <div className="relative w-full sm:max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <div className="relative w-full sm:max-w-md group">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
               <Input
                 placeholder="Buscar por nome, CPF ou CRM..."
-                className="pl-9"
+                className="pl-9 bg-black/20 border-white/10 focus-visible:ring-primary/50 text-white transition-all group-hover:border-white/20"
                 value={search}
                 onChange={(e) => {
                   setSearch(e.target.value)
@@ -340,10 +346,10 @@ export default function DoctorList() {
                 setPage(1)
               }}
             >
-              <SelectTrigger className="w-full sm:w-[220px]">
+              <SelectTrigger className="w-full sm:w-[220px] bg-black/20 border-white/10 text-white hover:border-white/20 transition-colors">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="bg-card/95 backdrop-blur-xl border-white/10 text-white">
                 <SelectItem value="all">Todos os Status</SelectItem>
                 <SelectItem value="Ativo">Ativo</SelectItem>
                 <SelectItem value="Aprovado">Aprovado</SelectItem>
@@ -362,21 +368,29 @@ export default function DoctorList() {
                 size="icon"
                 onClick={saveCurrentFilter}
                 title="Salvar filtro atual"
+                className="text-muted-foreground hover:text-white hover:bg-white/5"
               >
-                <Save className="w-4 h-4 text-muted-foreground" />
+                <Save className="w-4 h-4" />
               </Button>
               {savedFilters.length > 0 && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="outline" className="gap-2">
+                    <Button
+                      variant="outline"
+                      className="gap-2 bg-transparent border-white/10 hover:bg-white/5"
+                    >
                       <Bookmark className="w-4 h-4" /> Filtros
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent>
+                  <DropdownMenuContent className="bg-card/95 backdrop-blur-xl border-white/10 text-white">
                     <DropdownMenuLabel>Meus Filtros</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
+                    <DropdownMenuSeparator className="bg-white/10" />
                     {savedFilters.map((sf) => (
-                      <DropdownMenuItem key={sf.id} onClick={() => applyFilter(sf)}>
+                      <DropdownMenuItem
+                        key={sf.id}
+                        onClick={() => applyFilter(sf)}
+                        className="focus:bg-white/10 focus:text-white cursor-pointer"
+                      >
                         {sf.nome}
                       </DropdownMenuItem>
                     ))}
@@ -389,42 +403,47 @@ export default function DoctorList() {
         <CardContent className="p-0">
           <Table>
             <TableHeader>
-              <TableRow className="bg-muted/50 hover:bg-muted/50">
-                <TableHead>Nome & Contato</TableHead>
-                <TableHead>CRM/UF</TableHead>
-                <TableHead>Categoria</TableHead>
-                <TableHead>Saúde & SLA</TableHead>
-                <TableHead>Status</TableHead>
+              <TableRow className="border-b border-white/5 hover:bg-transparent">
+                <TableHead className="text-muted-foreground font-semibold">
+                  Nome & Contato
+                </TableHead>
+                <TableHead className="text-muted-foreground font-semibold">CRM/UF</TableHead>
+                <TableHead className="text-muted-foreground font-semibold">Categoria</TableHead>
+                <TableHead className="text-muted-foreground font-semibold">Saúde & SLA</TableHead>
+                <TableHead className="text-muted-foreground font-semibold">Status</TableHead>
                 <TableHead className="w-[80px]"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
-                  <TableRow key={i}>
+                  <TableRow key={i} className="border-white/5">
                     <TableCell>
-                      <Skeleton className="h-10 w-48" />
+                      <Skeleton className="h-10 w-48 bg-white/5" />
                     </TableCell>
                     <TableCell>
-                      <Skeleton className="h-5 w-16" />
+                      <Skeleton className="h-5 w-16 bg-white/5" />
                     </TableCell>
                     <TableCell>
-                      <Skeleton className="h-8 w-24" />
+                      <Skeleton className="h-8 w-24 bg-white/5" />
                     </TableCell>
                     <TableCell>
-                      <Skeleton className="h-8 w-32" />
+                      <Skeleton className="h-8 w-32 bg-white/5" />
                     </TableCell>
                     <TableCell>
-                      <Skeleton className="h-6 w-20" />
+                      <Skeleton className="h-6 w-20 bg-white/5" />
                     </TableCell>
                     <TableCell>
-                      <Skeleton className="h-8 w-8" />
+                      <Skeleton className="h-8 w-8 bg-white/5" />
                     </TableCell>
                   </TableRow>
                 ))
               ) : doctors.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
+                <TableRow className="border-white/5 hover:bg-transparent">
+                  <TableCell
+                    colSpan={6}
+                    className="text-center py-10 text-muted-foreground font-medium"
+                  >
                     Nenhum médico encontrado.
                   </TableCell>
                 </TableRow>
@@ -432,42 +451,42 @@ export default function DoctorList() {
                 doctors.map((doc) => {
                   const comp = getCompleteness(doc)
                   const sla = getSLA(doc)
-                  const isCritical = checkCriticalAlert(doc)
                   const displayCpf =
                     role === 'Operacional'
                       ? partiallyMaskCpf(doc.cpf || '')
                       : maskCpf(doc.cpf || '')
 
                   return (
-                    <TableRow key={doc.id} className="group">
+                    <TableRow
+                      key={doc.id}
+                      className="group border-white/5 hover:bg-white/[0.02] transition-colors"
+                    >
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary relative">
+                          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center text-xs font-bold text-primary relative border border-primary/20 shadow-sm group-hover:border-primary/40 transition-colors">
                             {doc.nome_completo.substring(0, 2).toUpperCase()}
-                            {isCritical && (
-                              <span
-                                className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white"
-                                title="Alerta Crítico: Falta Contrato"
-                              />
-                            )}
                           </div>
                           <div className="flex flex-col max-w-[200px] truncate">
-                            <span className="truncate">{doc.nome_completo}</span>
-                            <span className="text-xs text-muted-foreground truncate">
+                            <span className="truncate text-white font-semibold">
+                              {doc.nome_completo}
+                            </span>
+                            <span className="text-[11px] text-muted-foreground truncate tracking-wide">
                               CPF: {displayCpf}
                             </span>
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell>
-                        {doc.crm}/{doc.uf_crm}
+                      <TableCell className="text-white/80 font-medium">
+                        {doc.crm}
+                        <span className="text-white/40">/</span>
+                        {doc.uf_crm}
                       </TableCell>
                       <TableCell>
-                        <div className="flex flex-col items-start gap-1">
-                          <span className="text-[10px] uppercase font-bold text-muted-foreground">
+                        <div className="flex flex-col items-start gap-1.5">
+                          <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
                             {doc.tipo_contratacao}
                           </span>
-                          <span className="text-xs border px-2 py-0.5 rounded-md bg-muted/50">
+                          <span className="text-[11px] font-medium border border-white/10 px-2 py-0.5 rounded bg-black/20 text-white/90">
                             {doc.categoria_medico}
                           </span>
                         </div>
@@ -475,49 +494,59 @@ export default function DoctorList() {
                       <TableCell>
                         <div className="flex flex-col gap-2 w-full max-w-[120px]">
                           <div className="flex items-center gap-2">
-                            <Progress value={comp} className="h-1.5 flex-1" />
-                            <span className="text-[10px] font-medium w-6 text-right">{comp}%</span>
+                            <Progress
+                              value={comp}
+                              className="h-1.5 flex-1 bg-white/10"
+                              indicatorClassName="bg-primary"
+                            />
+                            <span className="text-[10px] font-bold w-7 text-right text-white/80">
+                              {comp}%
+                            </span>
                           </div>
                           {sla && (
-                            <Badge
-                              variant="outline"
-                              className={`text-[9px] px-1 py-0 border ${sla.color}`}
+                            <span
+                              className={`text-[9px] px-1.5 py-0.5 rounded border ${sla.class} font-semibold inline-block w-max tracking-wide uppercase`}
                             >
                               {sla.label}
-                            </Badge>
+                            </span>
                           )}
                         </div>
                       </TableCell>
-                      <TableCell>
-                        <Badge className={getStatusColor(doc.status_cadastro)}>
-                          {doc.status_cadastro}
-                        </Badge>
-                      </TableCell>
+                      <TableCell>{getStatusBadge(doc.status_cadastro)}</TableCell>
                       <TableCell>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button
                               variant="ghost"
-                              className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                              className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity text-white hover:bg-white/10"
                             >
                               <MoreHorizontal className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
+                          <DropdownMenuContent
+                            align="end"
+                            className="bg-card/95 backdrop-blur-xl border-white/10 text-white"
+                          >
                             <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                            <DropdownMenuItem asChild>
+                            <DropdownMenuItem
+                              asChild
+                              className="focus:bg-white/10 focus:text-white cursor-pointer"
+                            >
                               <Link to={`/medicos/${doc.id}`}>
                                 <Eye className="mr-2 h-4 w-4" /> Visualizar
                               </Link>
                             </DropdownMenuItem>
-                            <DropdownMenuItem asChild>
+                            <DropdownMenuItem
+                              asChild
+                              className="focus:bg-white/10 focus:text-white cursor-pointer"
+                            >
                               <Link to={`/medicos/editar/${doc.id}`}>
                                 <Edit className="mr-2 h-4 w-4" /> Editar
                               </Link>
                             </DropdownMenuItem>
                             {role === 'Admin' && doc.status_cadastro !== 'Inativo' && (
                               <DropdownMenuItem
-                                className="text-destructive"
+                                className="text-red-400 focus:bg-red-500/10 focus:text-red-300 cursor-pointer"
                                 onClick={() => setConfirmDelete(doc.id)}
                               >
                                 <Trash2 className="mr-2 h-4 w-4" /> Inativar
@@ -534,25 +563,32 @@ export default function DoctorList() {
           </Table>
 
           {!loading && totalPages > 1 && (
-            <div className="p-4 border-t">
+            <div className="p-4 border-t border-white/5 flex items-center justify-center">
               <Pagination>
                 <PaginationContent>
                   <PaginationItem>
                     <PaginationPrevious
                       onClick={() => setPage((p) => Math.max(1, p - 1))}
-                      className={page === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                      className={
+                        page === 1
+                          ? 'pointer-events-none opacity-50'
+                          : 'cursor-pointer hover:bg-white/5 text-white'
+                      }
                     />
                   </PaginationItem>
                   <PaginationItem>
-                    <span className="text-sm text-muted-foreground px-4">
-                      Página {page} de {totalPages}
+                    <span className="text-sm text-muted-foreground px-4 font-medium">
+                      Página <span className="text-white">{page}</span> de{' '}
+                      <span className="text-white">{totalPages}</span>
                     </span>
                   </PaginationItem>
                   <PaginationItem>
                     <PaginationNext
                       onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                       className={
-                        page === totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'
+                        page === totalPages
+                          ? 'pointer-events-none opacity-50'
+                          : 'cursor-pointer hover:bg-white/5 text-white'
                       }
                     />
                   </PaginationItem>

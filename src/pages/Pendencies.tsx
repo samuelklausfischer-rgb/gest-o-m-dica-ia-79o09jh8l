@@ -3,7 +3,14 @@ import { Link } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { FileWarning, Clock, FileSignature, ChevronRight } from 'lucide-react'
+import {
+  FileWarning,
+  Clock,
+  FileSignature,
+  ChevronRight,
+  AlertCircle,
+  Sparkles,
+} from 'lucide-react'
 import { api } from '@/services/api'
 import { useRealtime } from '@/hooks/use-realtime'
 
@@ -29,20 +36,29 @@ export default function Pendencies() {
   const pendRev = doctors.filter((d) => d.status_cadastro === 'Pendente de Revisão')
   const drafts = doctors.filter((d) => d.status_cadastro === 'Rascunho')
 
-  const PendencyGroup = ({ title, desc, icon: Icon, items, color }: any) => (
-    <Card className="shadow-sm border-t-4" style={{ borderTopColor: color }}>
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <Icon className="w-5 h-5" style={{ color }} /> {title}
-          <Badge variant="secondary" className="ml-auto">
+  const PendencyGroup = ({ title, desc, icon: Icon, items, gradient, glowColor }: any) => (
+    <Card
+      className={`glass-card overflow-hidden relative group border-t-0 shadow-[0_4px_30px_rgba(0,0,0,0.5)] hover:shadow-[0_4px_40px_${glowColor}] transition-shadow duration-500`}
+    >
+      <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r ${gradient}`}></div>
+      <CardHeader className="pb-4 border-b border-white/5 bg-white/[0.02]">
+        <CardTitle className="flex items-center gap-3 text-lg text-white">
+          <div className="p-2 bg-white/5 rounded-lg border border-white/10 group-hover:bg-white/10 transition-colors">
+            <Icon className="w-5 h-5 text-white/90" />
+          </div>
+          {title}
+          <Badge className="ml-auto bg-white/10 hover:bg-white/20 text-white border-none font-bold">
             {items.length}
           </Badge>
         </CardTitle>
-        <CardDescription>{desc}</CardDescription>
+        <CardDescription className="text-white/60 font-medium">{desc}</CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-4 bg-black/20">
         {items.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nenhuma pendência nesta categoria.</p>
+          <div className="text-sm text-muted-foreground py-8 text-center flex flex-col items-center gap-2">
+            <Sparkles className="w-6 h-6 text-white/20" />
+            Nenhuma pendência nesta categoria.
+          </div>
         ) : (
           <div className="space-y-3">
             {items.map((d: any) => {
@@ -52,17 +68,26 @@ export default function Pendencies() {
               return (
                 <div
                   key={d.id}
-                  className="flex items-center justify-between p-3 rounded-lg border bg-muted/20 hover:bg-muted/50 transition-colors"
+                  className="flex items-center justify-between p-4 rounded-xl border border-white/5 bg-white/[0.03] hover:bg-white/[0.06] transition-all hover:border-white/10 group/item"
                 >
-                  <div className="flex flex-col">
-                    <span className="font-semibold text-sm">{d.nome_completo}</span>
-                    <span className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                      <Clock className="w-3 h-3" /> Pendente há {days} dias
+                  <div className="flex flex-col gap-1.5">
+                    <span className="font-bold text-sm text-white group-hover/item:text-primary transition-colors">
+                      {d.nome_completo}
+                    </span>
+                    <span className="text-[11px] font-medium text-white/50 flex items-center gap-1.5 uppercase tracking-wider">
+                      <Clock className="w-3 h-3" /> Pendente há{' '}
+                      <span className="text-white">{days} dias</span>
                     </span>
                   </div>
-                  <Button asChild variant="ghost" size="sm">
+                  <Button
+                    asChild
+                    variant="ghost"
+                    size="sm"
+                    className="bg-white/5 hover:bg-primary/20 hover:text-primary text-white border border-white/10 hover:border-primary/30 transition-all rounded-lg px-3"
+                  >
                     <Link to={`/medicos/${d.id}`}>
-                      Resolver <ChevronRight className="w-4 h-4 ml-1" />
+                      Resolver{' '}
+                      <ChevronRight className="w-4 h-4 ml-1 opacity-50 group-hover/item:opacity-100 group-hover/item:translate-x-1 transition-all" />
                     </Link>
                   </Button>
                 </div>
@@ -75,11 +100,16 @@ export default function Pendencies() {
   )
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-8 max-w-7xl mx-auto">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight text-primary">Central de Pendências</h1>
-        <p className="text-muted-foreground mt-1">
-          Gerencie todos os gargalos da operação em um único lugar.
+        <h1 className="text-3xl font-bold tracking-tight text-white flex items-center gap-3">
+          <div className="p-2 bg-red-500/20 rounded-lg text-red-400">
+            <AlertCircle className="w-6 h-6" />
+          </div>
+          Central de Pendências
+        </h1>
+        <p className="text-muted-foreground mt-2 text-sm font-medium">
+          Gerencie todos os gargalos e inconsistências da operação em um único lugar.
         </p>
       </div>
 
@@ -89,28 +119,32 @@ export default function Pendencies() {
           desc="Médicos aguardando assinatura ou envio de contrato."
           icon={FileSignature}
           items={pendCont}
-          color="#3b82f6"
+          gradient="from-blue-500 to-indigo-500"
+          glowColor="rgba(59,130,246,0.15)"
         />
         <PendencyGroup
           title="Pendências Documentais"
-          desc="Faltam documentos obrigatórios (CRM, Comprovante, etc)."
+          desc="Faltam documentos obrigatórios validados."
           icon={FileWarning}
           items={pendDocs}
-          color="#6366f1"
+          gradient="from-indigo-500 to-purple-500"
+          glowColor="rgba(99,102,241,0.15)"
         />
         <PendencyGroup
           title="Revisões de IA Pendentes"
           desc="Cadastros importados via IA aguardando validação humana."
           icon={Clock}
           items={pendRev}
-          color="#0ea5e9"
+          gradient="from-sky-400 to-blue-500"
+          glowColor="rgba(14,165,233,0.15)"
         />
         <PendencyGroup
           title="Rascunhos Abandonados"
           desc="Cadastros manuais iniciados e não finalizados."
           icon={FileWarning}
           items={drafts}
-          color="#f59e0b"
+          gradient="from-amber-400 to-orange-500"
+          glowColor="rgba(245,158,11,0.15)"
         />
       </div>
     </div>

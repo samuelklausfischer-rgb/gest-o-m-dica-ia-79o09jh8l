@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/hooks/use-auth'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/hooks/use-toast'
+import { Stethoscope, Loader2 } from 'lucide-react'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -39,64 +39,57 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-muted/30 p-4">
-      <Card className="w-full max-w-md shadow-lg border-t-4 border-t-primary">
-        <CardHeader className="text-center pb-8">
-          <div className="mx-auto bg-primary/10 w-16 h-16 flex items-center justify-center rounded-full mb-4">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="28"
-              height="28"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="text-primary"
-            >
-              <path d="M4.8 2.3A.3.3 0 1 0 5 2H4a2 2 0 0 0-2 2v5a6 6 0 0 0 6 6v0a6 6 0 0 0 6-6V4a2 2 0 0 0-2-2h-1a.2.2 0 1 0 .3.3" />
-              <path d="M8 15v1a6 6 0 0 0 6 6v0a6 6 0 0 0 6-6v-4" />
-              <circle cx="20" cy="10" r="2" />
-            </svg>
+    <div className="relative min-h-screen flex items-center justify-center overflow-hidden bg-background">
+      <div className="absolute inset-0 w-full h-full overflow-hidden z-0">
+        <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-primary/20 rounded-full mix-blend-screen filter blur-[100px] opacity-60 animate-blob"></div>
+        <div className="absolute top-[20%] right-[-10%] w-[500px] h-[500px] bg-accent/20 rounded-full mix-blend-screen filter blur-[100px] opacity-60 animate-blob animation-delay-2000"></div>
+        <div className="absolute bottom-[-20%] left-[20%] w-[500px] h-[500px] bg-blue-500/20 rounded-full mix-blend-screen filter blur-[100px] opacity-60 animate-blob animation-delay-4000"></div>
+        <div className="absolute inset-0 bg-background/80 backdrop-blur-[1px]"></div>
+      </div>
+
+      <div className="relative z-10 w-full max-w-[420px] p-8 glass-panel rounded-2xl animate-fade-in-up border-t border-t-white/10">
+        <div className="text-center mb-8">
+          <div className="mx-auto bg-gradient-to-br from-primary/20 to-primary/5 w-16 h-16 flex items-center justify-center rounded-2xl mb-6 shadow-inner border border-primary/20 ring-1 ring-white/5">
+            <Stethoscope className="w-8 h-8 text-primary" />
           </div>
-          <CardTitle className="text-2xl font-bold text-primary">Gestão Médica IA</CardTitle>
-          <p className="text-sm text-muted-foreground mt-2">
-            Acesse para gerenciar o cadastro de médicos
+          <h1 className="text-3xl font-bold tracking-tight text-white mb-2 text-gradient">
+            Gestão Médica
+          </h1>
+          <p className="text-muted-foreground text-sm font-medium">
+            Portal Executivo de Cadastro e IA
           </p>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleLogin} className="space-y-5">
-            <div className="space-y-2">
-              <Input
-                placeholder="E-mail"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="h-12"
-              />
-            </div>
-            <div className="space-y-2">
-              <Input
-                placeholder="Senha"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                className="h-12"
-              />
-            </div>
-            <Button
-              type="submit"
-              disabled={isLoading}
-              className="w-full h-12 text-md font-medium mt-2"
-            >
-              {isLoading ? 'Entrando...' : 'Entrar no Sistema'}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+        </div>
+
+        <form onSubmit={handleLogin} className="space-y-5">
+          <div className="space-y-2 relative group">
+            <Input
+              placeholder="E-mail corporativo"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              className="h-12 bg-black/20 border-white/10 focus-visible:ring-primary/50 text-white placeholder:text-muted-foreground/50 transition-all group-hover:border-white/20"
+            />
+          </div>
+          <div className="space-y-2 relative group">
+            <Input
+              placeholder="Senha"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              className="h-12 bg-black/20 border-white/10 focus-visible:ring-primary/50 text-white placeholder:text-muted-foreground/50 transition-all group-hover:border-white/20"
+            />
+          </div>
+          <Button
+            type="submit"
+            disabled={isLoading}
+            className="w-full h-12 text-md font-medium mt-6 bg-primary hover:bg-primary/90 text-primary-foreground shadow-[0_0_20px_rgba(var(--primary),0.3)] transition-all hover:shadow-[0_0_30px_rgba(var(--primary),0.5)] border border-primary/50"
+          >
+            {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Acessar Sistema'}
+          </Button>
+        </form>
+      </div>
     </div>
   )
 }

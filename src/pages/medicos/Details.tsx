@@ -2,7 +2,6 @@ import { useEffect, useState, useRef } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import {
   AlertDialog,
@@ -25,6 +24,7 @@ import {
   XCircle,
   Clock,
   Loader2,
+  Activity,
 } from 'lucide-react'
 import { api } from '@/services/api'
 import { useRealtime } from '@/hooks/use-realtime'
@@ -88,7 +88,7 @@ export default function DoctorDetails() {
   if (!doctor)
     return (
       <div className="p-8 text-center flex items-center justify-center h-[50vh]">
-        <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full"></div>
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     )
 
@@ -175,11 +175,6 @@ export default function DoctorDetails() {
         title: 'Falha na conexão',
         description: 'Não foi possível enviar o documento.',
         variant: 'destructive',
-        action: (
-          <Button variant="outline" size="sm" onClick={() => uploadDocument(file)}>
-            Tentar novamente
-          </Button>
-        ),
       })
     }
   }
@@ -191,45 +186,54 @@ export default function DoctorDetails() {
     uploadDocument(file)
   }
 
-  const getStatusColor = (status: string) => {
+  const getStatusBadge = (status: string) => {
+    let style = ''
     switch (status) {
       case 'Ativo':
-        return 'bg-emerald-500'
+        style = 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+        break
       case 'Aprovado':
-        return 'bg-teal-500'
+        style = 'bg-teal-500/20 text-teal-400 border-teal-500/30'
+        break
       case 'Inativo':
       case 'Rejeitado':
-        return 'bg-red-500'
+        style = 'bg-red-500/20 text-red-400 border-red-500/30'
+        break
       case 'Rascunho':
-        return 'bg-slate-400'
+        style = 'bg-slate-500/20 text-slate-400 border-slate-500/30'
+        break
       case 'Pendente de Revisão':
       case 'Pendente Documental':
       case 'Pendente Contratual':
-        return 'bg-amber-500'
+        style = 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+        break
       default:
-        return 'bg-primary'
+        style = 'bg-primary/20 text-primary border-primary/30'
     }
+    return <span className={`premium-badge ${style}`}>{status}</span>
   }
 
   const getDocStatusColor = (status: string) => {
     switch (status) {
       case 'Validado':
-        return 'text-emerald-600 bg-emerald-50 border-emerald-200'
+        return 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
       case 'Pendente':
-        return 'text-amber-600 bg-amber-50 border-amber-200'
+        return 'text-amber-400 bg-amber-500/10 border-amber-500/20'
       case 'Inválido':
-        return 'text-red-600 bg-red-50 border-red-200'
+        return 'text-red-400 bg-red-500/10 border-red-500/20'
       case 'Vencido':
-        return 'text-slate-600 bg-slate-50 border-slate-200'
+        return 'text-slate-400 bg-slate-500/10 border-slate-500/20'
       default:
-        return ''
+        return 'text-white/70 bg-white/5 border-white/10'
     }
   }
 
   const InfoRow = ({ label, value }: { label: string; value?: string }) => (
-    <div className="flex flex-col space-y-1">
-      <span className="text-xs text-muted-foreground font-medium uppercase">{label}</span>
-      <span className="text-sm font-medium">{value || '-'}</span>
+    <div className="flex flex-col space-y-1 bg-white/5 p-3 rounded-lg border border-white/5">
+      <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">
+        {label}
+      </span>
+      <span className="text-sm font-semibold text-white">{value || '-'}</span>
     </div>
   )
 
@@ -246,39 +250,43 @@ export default function DoctorDetails() {
   } else completeness += 25
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
+    <div className="space-y-6 max-w-6xl mx-auto">
       <AlertDialog
         open={confirmDialog.isOpen}
         onOpenChange={(open) => !open && setConfirmDialog({ isOpen: false, action: null })}
       >
-        <AlertDialogContent>
+        <AlertDialogContent className="glass-card">
           <AlertDialogHeader>
-            <AlertDialogTitle>
+            <AlertDialogTitle className="text-white">
               {confirmDialog.action === 'approve' ? 'Aprovar Cadastro' : 'Confirmar Ação'}
             </AlertDialogTitle>
-            <AlertDialogDescription>
+            <AlertDialogDescription className="text-white/70">
               Tem certeza que deseja{' '}
               {confirmDialog.action === 'reject'
                 ? 'rejeitar'
                 : confirmDialog.action === 'approve'
                   ? 'aprovar'
                   : 'inativar'}{' '}
-              este cadastro? Esta ação afetará a disponibilidade do médico no sistema.
+              este cadastro?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isProcessing}>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel
+              disabled={isProcessing}
+              className="bg-transparent border-white/10 text-white hover:bg-white/5"
+            >
+              Cancelar
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleConfirmAction}
               disabled={isProcessing}
               className={
                 confirmDialog.action === 'approve'
-                  ? 'bg-emerald-600 hover:bg-emerald-700'
-                  : 'bg-destructive hover:bg-destructive/90'
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  : 'bg-destructive hover:bg-destructive/90 text-white'
               }
             >
-              {isProcessing && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Confirmar
+              {isProcessing && <Loader2 className="w-4 h-4 mr-2 animate-spin" />} Confirmar
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -286,22 +294,25 @@ export default function DoctorDetails() {
 
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/medicos')}>
-            <ArrowLeft className="w-5 h-5" />
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => navigate('/medicos')}
+            className="hover:bg-white/5"
+          >
+            <ArrowLeft className="w-5 h-5 text-white" />
           </Button>
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-xl font-bold text-primary">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary/30 to-primary/10 flex items-center justify-center text-2xl font-bold text-primary border border-primary/30 shadow-glow">
               {doctor.nome_completo.substring(0, 2).toUpperCase()}
             </div>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight flex items-center gap-3">
+              <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-3">
                 {doctor.nome_completo}
-                <Badge className={getStatusColor(doctor.status_cadastro)}>
-                  {doctor.status_cadastro}
-                </Badge>
+                {getStatusBadge(doctor.status_cadastro)}
               </h1>
-              <p className="text-muted-foreground text-sm mt-0.5">
-                CRM: {doctor.crm}/{doctor.uf_crm}
+              <p className="text-muted-foreground text-sm mt-1 font-medium">
+                CRM: {doctor.crm}/{doctor.uf_crm} • {doctor.especialidade}
               </p>
             </div>
           </div>
@@ -311,14 +322,14 @@ export default function DoctorDetails() {
             ['Pendente de Revisão', 'Pendente Documental'].includes(doctor.status_cadastro) && (
               <>
                 <Button
-                  className="bg-emerald-600 hover:bg-emerald-700 gap-2"
+                  className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white gap-2 shadow-[0_0_15px_rgba(16,185,129,0.3)] border-none"
                   onClick={() => setConfirmDialog({ isOpen: true, action: 'approve' })}
                 >
                   <CheckCircle className="w-4 h-4" /> Aprovar
                 </Button>
                 <Button
                   variant="outline"
-                  className="text-destructive border-destructive hover:bg-destructive/10 gap-2"
+                  className="text-red-400 border-red-500/30 hover:bg-red-500/10 gap-2 bg-black/20"
                   onClick={() => setConfirmDialog({ isOpen: true, action: 'reject' })}
                 >
                   <XCircle className="w-4 h-4" /> Rejeitar
@@ -328,13 +339,17 @@ export default function DoctorDetails() {
           {role === 'Admin' && doctor.status_cadastro !== 'Inativo' && (
             <Button
               variant="outline"
-              className="text-slate-600 gap-2"
+              className="text-white/60 border-white/10 hover:bg-white/5 gap-2 bg-transparent"
               onClick={() => setConfirmDialog({ isOpen: true, action: 'inactivate' })}
             >
               <Ban className="w-4 h-4" /> Inativar
             </Button>
           )}
-          <Button asChild variant="outline" className="gap-2">
+          <Button
+            asChild
+            variant="outline"
+            className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 text-white"
+          >
             <Link to={`/medicos/editar/${doctor.id}`}>
               <Edit className="w-4 h-4" /> Editar
             </Link>
@@ -344,18 +359,22 @@ export default function DoctorDetails() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
-          <Card className="shadow-sm">
-            <CardHeader className="pb-3 border-b bg-muted/10 flex flex-row items-center justify-between">
-              <CardTitle className="text-lg">Dados Pessoais e Profissionais</CardTitle>
-              <div className="flex items-center gap-3 w-40">
-                <span className="text-xs font-semibold whitespace-nowrap">
-                  Saúde: {Math.min(completeness, 100)}%
+          <Card className="glass-card">
+            <CardHeader className="pb-4 border-b border-white/5 bg-white/[0.02] flex flex-row items-center justify-between">
+              <CardTitle className="text-lg text-white">Dados Cadastrais</CardTitle>
+              <div className="flex items-center gap-3 w-48 bg-black/40 p-2 rounded-lg border border-white/5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground w-16">
+                  Saúde: <span className="text-white">{Math.min(completeness, 100)}%</span>
                 </span>
-                <Progress value={completeness} className="h-2" />
+                <Progress
+                  value={completeness}
+                  className="h-1.5 bg-white/10"
+                  indicatorClassName="bg-primary"
+                />
               </div>
             </CardHeader>
             <CardContent className="p-6">
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <InfoRow
                   label="CPF"
                   value={
@@ -392,12 +411,12 @@ export default function DoctorDetails() {
 
           {(doctor.tipo_contratacao === 'PJ' ||
             ['MEDICO PRN', 'MEDICO PALHOÇA'].includes(doctor.categoria_medico)) && (
-            <Card className="shadow-sm">
-              <CardHeader className="pb-3 border-b bg-muted/10">
-                <CardTitle className="text-lg">Dados Contratuais / Empresa</CardTitle>
+            <Card className="glass-card">
+              <CardHeader className="pb-4 border-b border-white/5 bg-white/[0.02]">
+                <CardTitle className="text-lg text-white">Contrato e Pessoa Jurídica</CardTitle>
               </CardHeader>
               <CardContent className="p-6">
-                <div className="grid grid-cols-2 gap-6">
+                <div className="grid grid-cols-2 gap-4">
                   {doctor.tipo_contratacao === 'PJ' && (
                     <>
                       <InfoRow
@@ -436,53 +455,61 @@ export default function DoctorDetails() {
             </Card>
           )}
 
-          <Card className="shadow-sm">
-            <CardHeader className="pb-3 border-b bg-muted/10 flex flex-row justify-between items-center">
+          <Card className="glass-card">
+            <CardHeader className="pb-4 border-b border-white/5 bg-white/[0.02] flex flex-row justify-between items-center">
               <div>
-                <CardTitle className="text-lg">Gestão de Documentos</CardTitle>
-                <CardDescription>Documentos ativos do profissional</CardDescription>
+                <CardTitle className="text-lg text-white">Documentos Digitais</CardTitle>
+                <CardDescription>Repositório seguro de arquivos</CardDescription>
               </div>
               <input type="file" hidden ref={fileInputRef} onChange={handleFileUpload} />
               <Button
                 size="sm"
                 variant="outline"
-                className="gap-2"
+                className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 text-white"
                 onClick={() => fileInputRef.current?.click()}
               >
-                <UploadCloud className="w-4 h-4" /> Enviar Novo
+                <UploadCloud className="w-4 h-4" /> Anexar Novo
               </Button>
             </CardHeader>
             <CardContent className="p-6">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {activeDocs.length === 0 ? (
-                  <div className="col-span-full text-sm text-muted-foreground py-4 text-center">
-                    Nenhum documento ativo.
+                  <div className="col-span-full text-sm text-muted-foreground py-6 text-center bg-black/20 rounded-lg border border-dashed border-white/10">
+                    Nenhum documento anexado.
                   </div>
                 ) : (
                   activeDocs.map((d) => (
                     <div
                       key={d.id}
-                      className="border rounded-lg p-4 flex flex-row items-center gap-4 hover:bg-muted/50 transition-colors"
+                      className="border border-white/10 bg-black/20 rounded-xl p-4 flex flex-row items-center gap-4 hover:bg-white/[0.04] transition-colors"
                     >
-                      <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center shrink-0">
+                      <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center shrink-0 border border-primary/20">
                         <FileText className="text-primary w-5 h-5" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate" title={d.nome_arquivo}>
+                        <p
+                          className="text-sm font-semibold text-white truncate"
+                          title={d.nome_arquivo}
+                        >
                           {d.nome_arquivo || 'Documento'}
                         </p>
-                        <div className="flex gap-2 mt-1">
-                          <span className="text-[10px] font-semibold px-1.5 py-0.5 bg-muted rounded">
+                        <div className="flex gap-2 mt-1.5">
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 bg-white/10 text-white/80 rounded uppercase tracking-wider">
                             {d.categoria_documento || 'Outro'}
                           </span>
                           <span
-                            className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${getDocStatusColor(d.status_validacao)}`}
+                            className={`text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wider ${getDocStatusColor(d.status_validacao)}`}
                           >
                             {d.status_validacao || 'Pendente'}
                           </span>
                         </div>
                       </div>
-                      <Button variant="ghost" size="icon" asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="hover:bg-white/10 text-white"
+                        asChild
+                      >
                         <a
                           href={api.documentos.getFileUrl?.(d) || '#'}
                           target="_blank"
@@ -497,18 +524,18 @@ export default function DoctorDetails() {
               </div>
 
               {historyDocs.length > 0 && (
-                <div className="mt-8 pt-6 border-t">
-                  <h4 className="text-sm font-semibold mb-4 text-muted-foreground flex items-center gap-2">
-                    <Clock className="w-4 h-4" /> Histórico de Documentos (Inativos)
+                <div className="mt-8 pt-6 border-t border-white/5">
+                  <h4 className="text-xs font-bold mb-4 text-muted-foreground flex items-center gap-2 uppercase tracking-widest">
+                    <Clock className="w-4 h-4" /> Histórico Inativo
                   </h4>
                   <div className="space-y-2">
                     {historyDocs.map((d) => (
                       <div
                         key={d.id}
-                        className="flex justify-between items-center text-sm border-b pb-2 opacity-60"
+                        className="flex justify-between items-center text-sm p-2 rounded hover:bg-white/5 opacity-60 transition-colors"
                       >
-                        <span className="truncate">{d.nome_arquivo}</span>
-                        <span className="text-xs">
+                        <span className="truncate text-white">{d.nome_arquivo}</span>
+                        <span className="text-xs text-muted-foreground">
                           {new Date(d.updated).toLocaleDateString('pt-BR')}
                         </span>
                       </div>
@@ -521,48 +548,53 @@ export default function DoctorDetails() {
         </div>
 
         <div className="col-span-1">
-          <Card className="shadow-sm h-full max-h-[800px] flex flex-col">
-            <CardHeader className="pb-3 border-b bg-muted/10">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Clock className="w-5 h-5 text-primary" /> Audit Timeline
+          <Card className="glass-card h-full max-h-[800px] flex flex-col">
+            <CardHeader className="pb-4 border-b border-white/5 bg-white/[0.02]">
+              <CardTitle className="text-lg flex items-center gap-2 text-white">
+                <Activity className="w-5 h-5 text-primary" /> Log de Auditoria
               </CardTitle>
             </CardHeader>
             <CardContent className="p-6 flex-1 overflow-auto">
-              <div className="space-y-6 relative before:absolute before:inset-0 before:ml-2.5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-border before:to-transparent">
+              <div className="space-y-6 relative before:absolute before:inset-0 before:ml-2.5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-[2px] before:bg-gradient-to-b before:from-transparent before:via-white/10 before:to-transparent">
                 {activities.map((act) => (
                   <div
                     key={act.id}
                     className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active"
                   >
-                    <div className="flex items-center justify-center w-6 h-6 rounded-full border border-white bg-secondary text-white shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 shadow z-10">
-                      <div className="w-1.5 h-1.5 bg-white rounded-full"></div>
+                    <div className="flex items-center justify-center w-6 h-6 rounded-full bg-primary text-white shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 shadow-glow z-10 ring-4 ring-background">
+                      <div className="w-2 h-2 bg-white rounded-full"></div>
                     </div>
-                    <div className="w-[calc(100%-2rem)] md:w-[calc(50%-1.5rem)] p-3 rounded-lg border bg-card shadow-sm hover:shadow-md transition-shadow">
-                      <div className="font-semibold text-sm leading-tight text-primary/90">
+                    <div className="w-[calc(100%-2rem)] md:w-[calc(50%-1.5rem)] p-3.5 rounded-xl border border-white/5 bg-white/[0.03] shadow-sm hover:border-white/10 transition-colors">
+                      <div className="font-semibold text-sm leading-tight text-white mb-1">
                         {act.acao}
                       </div>
                       {(act.valor_anterior || act.valor_novo) && (
-                        <div className="text-xs mt-1 bg-muted/30 p-1.5 rounded border">
+                        <div className="text-xs mt-2 bg-black/40 p-2 rounded-lg border border-white/5">
                           {act.valor_anterior && (
                             <div
-                              className="text-red-500 line-through truncate"
+                              className="text-red-400 line-through truncate mb-0.5"
                               title={act.valor_anterior}
                             >
                               {act.valor_anterior}
                             </div>
                           )}
                           {act.valor_novo && (
-                            <div className="text-emerald-600 truncate" title={act.valor_novo}>
+                            <div
+                              className="text-emerald-400 truncate font-medium"
+                              title={act.valor_novo}
+                            >
                               {act.valor_novo}
                             </div>
                           )}
                         </div>
                       )}
-                      <div className="text-xs text-muted-foreground mt-1">
-                        Por {act.expand?.usuario_id?.name || 'Sistema'}
-                      </div>
-                      <div className="text-[10px] text-muted-foreground mt-1.5 border-t pt-1.5">
-                        {new Date(act.created).toLocaleString('pt-BR')}
+                      <div className="flex justify-between items-center mt-2 pt-2 border-t border-white/5">
+                        <div className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
+                          Por {act.expand?.usuario_id?.name || 'Sistema'}
+                        </div>
+                        <div className="text-[10px] text-white/50">
+                          {new Date(act.created).toLocaleString('pt-BR')}
+                        </div>
                       </div>
                     </div>
                   </div>
