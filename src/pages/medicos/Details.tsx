@@ -24,6 +24,7 @@ import {
   UploadCloud,
   XCircle,
   Clock,
+  Loader2,
 } from 'lucide-react'
 import { api } from '@/services/api'
 import { useRealtime } from '@/hooks/use-realtime'
@@ -35,7 +36,8 @@ export default function DoctorDetails() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { user } = useAuth()
-  const role = user?.name === 'Admin' || user?.name === 'Revisor' ? 'Administrador' : 'Operacional'
+  const role =
+    user?.name === 'Admin' ? 'Admin' : user?.name === 'Revisor' ? 'Revisor' : 'Operacional'
   const { toast } = useToast()
 
   const [doctor, setDoctor] = useState<any>(null)
@@ -47,8 +49,10 @@ export default function DoctorDetails() {
 
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean
-    action: 'reject' | 'inactivate' | null
+    action: 'approve' | 'reject' | 'inactivate' | null
   }>({ isOpen: false, action: null })
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [uploadFile, setUploadFile] = useState<File | null>(null)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -99,6 +103,17 @@ export default function DoctorDetails() {
       .map((d) => d.categoria_documento)
     const missing = required.filter((r: string) => !validDocs.includes(r))
 
+    if (doctor.categoria_medico === 'MEDICO PRN' || doctor.categoria_medico === 'MEDICO PALHOÇA') {
+      if (!doctor.contrato_assinado) {
+        toast({
+          title: 'Aprovação Bloqueada',
+          description: 'Não é possível aprovar PRN/Palhoça sem contrato assinado.',
+          variant: 'destructive',
+        })
+        return false
+      }
+    }
+
     if (missing.length > 0) {
       toast({
         title: 'Documentação Pendente',
@@ -110,48 +125,70 @@ export default function DoctorDetails() {
     return true
   }
 
-  const handleApprove = async () => {
-    if (!validateWorkflow()) return
-    try {
-      await api.medicos.update(doctor.id, { status_cadastro: 'Aprovado' })
-      await api.auditoria.log(doctor.id, 'Aprovação de Cadastro')
-      toast({ title: 'Cadastro Aprovado' })
-    } catch {
-      toast({ title: 'Erro ao aprovar', variant: 'destructive' })
-    }
-  }
-
   const handleConfirmAction = async () => {
-    if (confirmDialog.action === 'inactivate') {
-      await api.medicos.update(doctor.id, { status_cadastro: 'Inativo', ativo: false })
-      await api.auditoria.log(doctor.id, 'Inativação de Cadastro')
-      toast({ title: 'Cadastro Inativado' })
-    } else if (confirmDialog.action === 'reject') {
-      await api.medicos.update(doctor.id, { status_cadastro: 'Rejeitado' })
-      await api.auditoria.log(doctor.id, 'Rejeição de Cadastro')
-      toast({ title: 'Cadastro Rejeitado' })
+    if (!confirmDialog.action || isProcessing) return
+    if (confirmDialog.action === 'approve' && !validateWorkflow()) {
+      setConfirmDialog({ isOpen: false, action: null })
+      return
     }
-    setConfirmDialog({ isOpen: false, action: null })
+
+    setIsProcessing(true)
+    try {
+      if (confirmDialog.action === 'inactivate') {
+        await api.medicos.update(doctor.id, { status_cadastro: 'Inativo', ativo: false })
+        await api.auditoria.log(doctor.id, 'Inativação de Cadastro')
+        toast({ title: 'Cadastro Inativado' })
+      } else if (confirmDialog.action === 'reject') {
+        await api.medicos.update(doctor.id, { status_cadastro: 'Rejeitado' })
+        await api.auditoria.log(doctor.id, 'Rejeição de Cadastro')
+        toast({ title: 'Cadastro Rejeitado' })
+      } else if (confirmDialog.action === 'approve') {
+        await api.medicos.update(doctor.id, { status_cadastro: 'Aprovado' })
+        await api.auditoria.log(doctor.id, 'Aprovação de Cadastro')
+        toast({ title: 'Cadastro Aprovado' })
+      }
+    } catch {
+      toast({ title: 'Erro ao processar ação', variant: 'destructive' })
+    } finally {
+      setIsProcessing(false)
+      setConfirmDialog({ isOpen: false, action: null })
+    }
   }
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files?.length) return
+  const uploadDocument = async (file: File) => {
     try {
       const form = new FormData()
-      form.append('arquivos_enviados', e.target.files[0]) // mock field
+      form.append('arquivos_enviados', file)
       form.append('medico_id', doctor.id)
-      form.append('nome_arquivo', e.target.files[0].name)
+      form.append('nome_arquivo', file.name)
       form.append('categoria_documento', 'Outro')
       form.append('status_validacao', 'Pendente')
       form.append('ativo', 'true')
-      form.append('url_arquivo', e.target.files[0])
+      form.append('url_arquivo', file)
 
       await api.documentos.create(form)
-      await api.auditoria.log(doctor.id, `Novo documento anexado: ${e.target.files[0].name}`)
+      await api.auditoria.log(doctor.id, `Novo documento anexado: ${file.name}`)
       toast({ title: 'Documento Anexado' })
+      setUploadFile(null)
     } catch {
-      toast({ title: 'Erro ao anexar documento', variant: 'destructive' })
+      toast({
+        title: 'Falha na conexão',
+        description: 'Não foi possível enviar o documento.',
+        variant: 'destructive',
+        action: (
+          <Button variant="outline" size="sm" onClick={() => uploadDocument(file)}>
+            Tentar novamente
+          </Button>
+        ),
+      })
     }
+  }
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files?.length) return
+    const file = e.target.files[0]
+    setUploadFile(file)
+    uploadDocument(file)
   }
 
   const getStatusColor = (status: string) => {
@@ -216,18 +253,31 @@ export default function DoctorDetails() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar Ação</AlertDialogTitle>
+            <AlertDialogTitle>
+              {confirmDialog.action === 'approve' ? 'Aprovar Cadastro' : 'Confirmar Ação'}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja {confirmDialog.action === 'reject' ? 'rejeitar' : 'inativar'}{' '}
+              Tem certeza que deseja{' '}
+              {confirmDialog.action === 'reject'
+                ? 'rejeitar'
+                : confirmDialog.action === 'approve'
+                  ? 'aprovar'
+                  : 'inativar'}{' '}
               este cadastro? Esta ação afetará a disponibilidade do médico no sistema.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={isProcessing}>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleConfirmAction}
-              className="bg-destructive hover:bg-destructive/90"
+              disabled={isProcessing}
+              className={
+                confirmDialog.action === 'approve'
+                  ? 'bg-emerald-600 hover:bg-emerald-700'
+                  : 'bg-destructive hover:bg-destructive/90'
+              }
             >
+              {isProcessing && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Confirmar
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -257,12 +307,12 @@ export default function DoctorDetails() {
           </div>
         </div>
         <div className="flex gap-2 flex-wrap">
-          {role === 'Administrador' &&
+          {(role === 'Admin' || role === 'Revisor') &&
             ['Pendente de Revisão', 'Pendente Documental'].includes(doctor.status_cadastro) && (
               <>
                 <Button
                   className="bg-emerald-600 hover:bg-emerald-700 gap-2"
-                  onClick={handleApprove}
+                  onClick={() => setConfirmDialog({ isOpen: true, action: 'approve' })}
                 >
                   <CheckCircle className="w-4 h-4" /> Aprovar
                 </Button>
@@ -275,7 +325,7 @@ export default function DoctorDetails() {
                 </Button>
               </>
             )}
-          {role === 'Administrador' && doctor.status_cadastro !== 'Inativo' && (
+          {role === 'Admin' && doctor.status_cadastro !== 'Inativo' && (
             <Button
               variant="outline"
               className="text-slate-600 gap-2"
@@ -309,15 +359,28 @@ export default function DoctorDetails() {
                 <InfoRow
                   label="CPF"
                   value={
-                    role === 'Administrador'
-                      ? maskCpf(doctor.cpf || '')
-                      : partiallyMaskCpf(doctor.cpf || '')
+                    role === 'Operacional'
+                      ? partiallyMaskCpf(doctor.cpf || '')
+                      : maskCpf(doctor.cpf || '')
                   }
                 />
-                <InfoRow label="E-mail" value={doctor.email} />
+                <InfoRow
+                  label="E-mail"
+                  value={
+                    role === 'Operacional'
+                      ? doctor.email?.replace(/(.{2})(.*)(@.*)/, '$1***$3')
+                      : doctor.email
+                  }
+                />
                 <InfoRow
                   label="Telefone"
-                  value={doctor.telefone ? maskPhone(doctor.telefone) : ''}
+                  value={
+                    doctor.telefone
+                      ? role === 'Operacional'
+                        ? maskPhone(doctor.telefone).replace(/(\d{4})$/, '****')
+                        : maskPhone(doctor.telefone)
+                      : ''
+                  }
                 />
                 <InfoRow label="Especialidade" value={doctor.especialidade} />
                 <InfoRow label="RQE" value={doctor.rqe} />
@@ -337,7 +400,16 @@ export default function DoctorDetails() {
                 <div className="grid grid-cols-2 gap-6">
                   {doctor.tipo_contratacao === 'PJ' && (
                     <>
-                      <InfoRow label="CNPJ" value={pj?.cnpj ? maskCnpj(pj.cnpj) : ''} />
+                      <InfoRow
+                        label="CNPJ"
+                        value={
+                          pj?.cnpj
+                            ? role === 'Operacional'
+                              ? '**.***.***/****-**'
+                              : maskCnpj(pj.cnpj)
+                            : ''
+                        }
+                      />
                       <InfoRow label="Razão Social" value={pj?.razao_social} />
                     </>
                   )}

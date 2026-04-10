@@ -12,7 +12,8 @@ import { Navigate } from 'react-router-dom'
 export default function Settings() {
   const { user } = useAuth()
   const { toast } = useToast()
-  const role = user?.name === 'Admin' || user?.name === 'Revisor' ? 'Administrador' : 'Operacional'
+  const role =
+    user?.name === 'Admin' ? 'Admin' : user?.name === 'Revisor' ? 'Revisor' : 'Operacional'
 
   const [configId, setConfigId] = useState('')
   const [days, setDays] = useState(30)
@@ -33,7 +34,7 @@ export default function Settings() {
     loadData()
   }, [])
 
-  if (role !== 'Administrador') return <Navigate to="/" />
+  if (role !== 'Admin') return <Navigate to="/" />
 
   const handleSave = async () => {
     if (!configId) return

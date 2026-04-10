@@ -45,7 +45,8 @@ import { NotificationDropdown } from './NotificationDropdown'
 export default function Layout() {
   const location = useLocation()
   const { user, signOut } = useAuth()
-  const role = user?.name === 'Admin' || user?.name === 'Revisor' ? 'Administrador' : 'Operacional'
+  const role =
+    user?.name === 'Admin' ? 'Admin' : user?.name === 'Revisor' ? 'Revisor' : 'Operacional'
 
   const getBreadcrumbs = () => {
     const paths = location.pathname.split('/').filter(Boolean)
@@ -135,15 +136,17 @@ export default function Layout() {
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild isActive={location.pathname === '/relatorios'}>
-                  <Link to="/relatorios">
-                    <BarChart3 />
-                    <span>Relatórios</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              {role === 'Administrador' && (
+              {role === 'Admin' && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild isActive={location.pathname === '/relatorios'}>
+                    <Link to="/relatorios">
+                      <BarChart3 />
+                      <span>Relatórios</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
+              {role === 'Admin' && (
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild isActive={location.pathname === '/configuracoes'}>
                     <Link to="/configuracoes">

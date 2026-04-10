@@ -46,7 +46,17 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from '@/components/ui/pagination'
-import { MoreHorizontal, Download, Eye, Edit, Trash2, Search, Save, Bookmark } from 'lucide-react'
+import {
+  MoreHorizontal,
+  Download,
+  Eye,
+  Edit,
+  Trash2,
+  Search,
+  Save,
+  Bookmark,
+  Loader2,
+} from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { api } from '@/services/api'
 import { useRealtime } from '@/hooks/use-realtime'
@@ -56,7 +66,8 @@ import { maskCpf, partiallyMaskCpf } from '@/utils/masks'
 
 export default function DoctorList() {
   const { user } = useAuth()
-  const role = user?.name === 'Admin' || user?.name === 'Revisor' ? 'Administrador' : 'Operacional'
+  const role =
+    user?.name === 'Admin' ? 'Admin' : user?.name === 'Revisor' ? 'Revisor' : 'Operacional'
   const { toast } = useToast()
 
   const [doctors, setDoctors] = useState<any[]>([])
@@ -73,6 +84,8 @@ export default function DoctorList() {
   const perPage = 20
 
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
 
   const loadData = async () => {
     setLoading(true)
@@ -176,7 +189,8 @@ export default function DoctorList() {
   }
 
   const executeDelete = async () => {
-    if (!confirmDelete) return
+    if (!confirmDelete || isDeleting) return
+    setIsDeleting(true)
     try {
       await api.medicos.update(confirmDelete, { ativo: false, status_cadastro: 'Inativo' })
       await api.auditoria.log(confirmDelete, 'Inativação de cadastro (Soft Delete)')
@@ -184,6 +198,7 @@ export default function DoctorList() {
     } catch {
       toast({ title: 'Erro ao inativar', variant: 'destructive' })
     } finally {
+      setIsDeleting(false)
       setConfirmDelete(null)
     }
   }
@@ -211,33 +226,48 @@ export default function DoctorList() {
     setPage(1)
   }
 
-  const handleExport = () => {
-    const csvRows = [
-      ['Nome', 'CPF', 'CRM', 'UF', 'Categoria', 'Contratacao', 'Status', 'SLA', 'Completude (%)'],
-    ]
-    doctors.forEach((d) => {
-      const sla = getSLA(d)?.label || 'Concluido'
-      csvRows.push([
-        `"${d.nome_completo}"`,
-        d.cpf,
-        d.crm,
-        d.uf_crm,
-        d.categoria_medico,
-        d.tipo_contratacao,
-        d.status_cadastro,
-        sla,
-        getCompleteness(d).toString(),
-      ])
-    })
-    const blob = new Blob([csvRows.map((r) => r.join(',')).join('\n')], {
-      type: 'text/csv;charset=utf-8;',
-    })
-    const url = window.URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'medicos.csv'
-    a.click()
-    toast({ title: 'Exportação iniciada' })
+  const handleExport = async () => {
+    if (isExporting) return
+    setIsExporting(true)
+    try {
+      await api.auditoria.log(
+        '',
+        'Exportação',
+        'Filtros: Lista de Médicos',
+        '',
+        JSON.stringify({ search, status: filterStatus }),
+      )
+      const csvRows = [
+        ['Nome', 'CPF', 'CRM', 'UF', 'Categoria', 'Contratacao', 'Status', 'SLA', 'Completude (%)'],
+      ]
+      doctors.forEach((d) => {
+        const sla = getSLA(d)?.label || 'Concluido'
+        csvRows.push([
+          `"${d.nome_completo}"`,
+          d.cpf,
+          d.crm,
+          d.uf_crm,
+          d.categoria_medico,
+          d.tipo_contratacao,
+          d.status_cadastro,
+          sla,
+          getCompleteness(d).toString(),
+        ])
+      })
+      const blob = new Blob([csvRows.map((r) => r.join(',')).join('\n')], {
+        type: 'text/csv;charset=utf-8;',
+      })
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'medicos.csv'
+      a.click()
+      toast({ title: 'Exportação concluída' })
+    } catch {
+      toast({ title: 'Erro na exportação', variant: 'destructive' })
+    } finally {
+      setIsExporting(false)
+    }
   }
 
   return (
@@ -255,8 +285,10 @@ export default function DoctorList() {
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={executeDelete}
+              disabled={isDeleting}
               className="bg-destructive hover:bg-destructive/90"
             >
+              {isDeleting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
               Inativar
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -271,8 +303,13 @@ export default function DoctorList() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={handleExport} className="gap-2">
-            <Download className="w-4 h-4" /> Exportar
+          <Button variant="outline" onClick={handleExport} disabled={isExporting} className="gap-2">
+            {isExporting ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Download className="w-4 h-4" />
+            )}
+            {isExporting ? 'Exportando...' : 'Exportar'}
           </Button>
           <Button asChild className="gap-2">
             <Link to="/medicos/novo">Novo Cadastro</Link>
@@ -397,9 +434,9 @@ export default function DoctorList() {
                   const sla = getSLA(doc)
                   const isCritical = checkCriticalAlert(doc)
                   const displayCpf =
-                    role === 'Administrador'
-                      ? maskCpf(doc.cpf || '')
-                      : partiallyMaskCpf(doc.cpf || '')
+                    role === 'Operacional'
+                      ? partiallyMaskCpf(doc.cpf || '')
+                      : maskCpf(doc.cpf || '')
 
                   return (
                     <TableRow key={doc.id} className="group">
@@ -478,7 +515,7 @@ export default function DoctorList() {
                                 <Edit className="mr-2 h-4 w-4" /> Editar
                               </Link>
                             </DropdownMenuItem>
-                            {role === 'Administrador' && doc.status_cadastro !== 'Inativo' && (
+                            {role === 'Admin' && doc.status_cadastro !== 'Inativo' && (
                               <DropdownMenuItem
                                 className="text-destructive"
                                 onClick={() => setConfirmDelete(doc.id)}

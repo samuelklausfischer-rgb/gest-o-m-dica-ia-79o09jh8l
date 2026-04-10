@@ -1,13 +1,19 @@
 import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Download, BarChart3, Users } from 'lucide-react'
+import { Download, BarChart3, Users, Loader2 } from 'lucide-react'
 import { api } from '@/services/api'
 import { useToast } from '@/hooks/use-toast'
+import { useAuth } from '@/hooks/use-auth'
+import { Navigate } from 'react-router-dom'
 
 export default function Reports() {
+  const { user } = useAuth()
+  const role =
+    user?.name === 'Admin' ? 'Admin' : user?.name === 'Revisor' ? 'Revisor' : 'Operacional'
   const { toast } = useToast()
   const [audits, setAudits] = useState<any[]>([])
+  const [isExporting, setIsExporting] = useState(false)
 
   const loadData = async () => {
     try {
@@ -44,25 +50,36 @@ export default function Reports() {
 
   const prodData = generateProductivity()
 
-  const exportProductivity = () => {
-    const csvRows = [['Usuario', 'Cadastros Criados', 'Cadastros Aprovados', 'Outras Acoes']]
-    prodData.forEach((d) =>
-      csvRows.push([
-        `"${d.name}"`,
-        d.created.toString(),
-        d.approved.toString(),
-        d.others.toString(),
-      ]),
-    )
-    const blob = new Blob([csvRows.map((r) => r.join(',')).join('\n')], {
-      type: 'text/csv;charset=utf-8;',
-    })
-    const url = window.URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'produtividade.csv'
-    a.click()
-    toast({ title: 'Exportação iniciada' })
+  if (role !== 'Admin') return <Navigate to="/" />
+
+  const exportProductivity = async () => {
+    if (isExporting) return
+    setIsExporting(true)
+    try {
+      await api.auditoria.log('', 'Exportação', 'Relatório de Produtividade', '', '')
+      const csvRows = [['Usuario', 'Cadastros Criados', 'Cadastros Aprovados', 'Outras Acoes']]
+      prodData.forEach((d) =>
+        csvRows.push([
+          `"${d.name}"`,
+          d.created.toString(),
+          d.approved.toString(),
+          d.others.toString(),
+        ]),
+      )
+      const blob = new Blob([csvRows.map((r) => r.join(',')).join('\n')], {
+        type: 'text/csv;charset=utf-8;',
+      })
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'produtividade.csv'
+      a.click()
+      toast({ title: 'Exportação concluída' })
+    } catch (e) {
+      toast({ title: 'Erro na exportação', variant: 'destructive' })
+    } finally {
+      setIsExporting(false)
+    }
   }
 
   return (
@@ -104,8 +121,17 @@ export default function Reports() {
                 </div>
               ))}
             </div>
-            <Button className="w-full mt-4 gap-2" onClick={exportProductivity}>
-              <Download className="w-4 h-4" /> Baixar Excel (CSV)
+            <Button
+              className="w-full mt-4 gap-2"
+              onClick={exportProductivity}
+              disabled={isExporting}
+            >
+              {isExporting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
+              {isExporting ? 'Exportando...' : 'Baixar Excel (CSV)'}
             </Button>
           </CardContent>
         </Card>

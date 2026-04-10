@@ -99,7 +99,8 @@ export default function DoctorForm() {
   const navigate = useNavigate()
   const { toast } = useToast()
   const { user } = useAuth()
-  const role = user?.name === 'Admin' || user?.name === 'Revisor' ? 'Administrador' : 'Operacional'
+  const role =
+    user?.name === 'Admin' ? 'Admin' : user?.name === 'Revisor' ? 'Revisor' : 'Operacional'
 
   const [activeTab, setActiveTab] = useState('pessoais')
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -108,6 +109,9 @@ export default function DoctorForm() {
     type: string
     record: any
   }>({ isOpen: false, type: '', record: null })
+
+  const [originalUpdated, setOriginalUpdated] = useState<string>('')
+  const [concurrencyAlert, setConcurrencyAlert] = useState(false)
 
   const methods = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -123,6 +127,7 @@ export default function DoctorForm() {
     if (isEditing && id) {
       Promise.all([api.medicos.get(id), api.dadosPj.getByMedico(id), api.contratos.getByMedico(id)])
         .then(([doc, pj, cont]) => {
+          setOriginalUpdated(doc.updated)
           methods.reset({
             ...doc,
             cpf: maskCpf(doc.cpf),
@@ -159,28 +164,97 @@ export default function DoctorForm() {
     }
   }
 
-  const logChanges = async (medId: string, oldData: any, newData: any) => {
-    if (!oldData) return
-    const keys = [
-      'nome_completo',
-      'cpf',
-      'crm',
-      'uf_crm',
-      'especialidade',
-      'categoria_medico',
-      'tipo_contratacao',
-    ]
-    for (const k of keys) {
-      if (oldData[k] !== newData[k]) {
-        await api.auditoria.log(medId, `Alterou ${k}`, k, oldData[k] || '', newData[k] || '')
+  const logChanges = async (
+    medId: string,
+    oldData: any,
+    newData: any,
+    oldCont: any,
+    newCont: any,
+    oldPj: any,
+    newPj: any,
+  ) => {
+    if (oldData) {
+      const keys = Object.keys(newData)
+      for (const k of keys) {
+        if (
+          newData[k] !== undefined &&
+          oldData[k] !== newData[k] &&
+          k !== 'updated' &&
+          k !== 'created'
+        ) {
+          await api.auditoria.log(
+            medId,
+            `Alterou ${k}`,
+            k,
+            String(oldData[k] || ''),
+            String(newData[k] || ''),
+          )
+        }
+      }
+    }
+    if (oldCont && newCont) {
+      const keys = ['modelo_remuneracao', 'valor_acordado', 'data_assinatura', 'ativo']
+      for (const k of keys) {
+        if (newCont[k] !== undefined && oldCont[k] !== newCont[k]) {
+          await api.auditoria.log(
+            medId,
+            `Alterou contrato: ${k}`,
+            k,
+            String(oldCont[k] || ''),
+            String(newCont[k] || ''),
+          )
+        }
+      }
+    }
+    if (oldPj && newPj) {
+      const keys = ['cnpj', 'razao_social']
+      for (const k of keys) {
+        if (newPj[k] !== undefined && oldPj[k] !== newPj[k]) {
+          await api.auditoria.log(
+            medId,
+            `Alterou PJ: ${k}`,
+            k,
+            String(oldPj[k] || ''),
+            String(newPj[k] || ''),
+          )
+        }
       }
     }
   }
 
-  const performSave = async (data: FormValues, status: string, skipDuplicateCheck = false) => {
+  const performSave = async (
+    data: FormValues,
+    status: string,
+    skipDuplicateCheck = false,
+    skipConcurrency = false,
+  ) => {
     if (isSubmitting) return
+
+    if (
+      status === 'Aprovado' &&
+      (data.categoria_medico === 'MEDICO PRN' || data.categoria_medico === 'MEDICO PALHOÇA') &&
+      !data.contrato_assinado
+    ) {
+      toast({
+        title: 'Validação',
+        description: 'Não é possível aprovar PRN/Palhoça sem contrato assinado.',
+        variant: 'destructive',
+      })
+      return
+    }
+
     setIsSubmitting(true)
     try {
+      let currentDoc = null
+      if (isEditing && id) {
+        currentDoc = await api.medicos.get(id)
+        if (!skipConcurrency && currentDoc.updated !== originalUpdated) {
+          setConcurrencyAlert(true)
+          setIsSubmitting(false)
+          return
+        }
+      }
+
       if (!skipDuplicateCheck) {
         const dup = await checkDuplicates(data.cpf, data.crm, data.uf_crm)
         if (dup) {
@@ -215,10 +289,17 @@ export default function DoctorForm() {
       }
 
       let medId = id
+      let oldDoc = null
+      let oldCont = null
+      let oldPj = null
+      let newContData = null
+      let newPjData = null
+
       if (isEditing && id) {
-        const oldDoc = await api.medicos.get(id)
+        oldDoc = currentDoc
+        oldCont = await api.contratos.getByMedico(id)
+        oldPj = await api.dadosPj.getByMedico(id)
         await api.medicos.update(id, docData)
-        await logChanges(id, oldDoc, docData)
         await api.auditoria.log(id, `Atualizou cadastro para ${status}`)
       } else {
         const res = await api.medicos.create(docData)
@@ -228,18 +309,18 @@ export default function DoctorForm() {
 
       if (medId) {
         if (showPj) {
-          const pjData = {
+          newPjData = {
             medico_id: medId,
             cnpj: data.pj_cnpj?.replace(/\D/g, ''),
             razao_social: data.pj_razao_social,
           }
           const pj = await api.dadosPj.getByMedico(medId)
-          if (pj) await api.dadosPj.update(pj.id, pjData)
-          else await api.dadosPj.create(pjData)
+          if (pj) await api.dadosPj.update(pj.id, newPjData)
+          else await api.dadosPj.create(newPjData)
         }
 
         if (showContract) {
-          const contData = {
+          newContData = {
             medico_id: medId,
             data_assinatura: data.data_assinatura
               ? new Date(data.data_assinatura).toISOString()
@@ -255,13 +336,17 @@ export default function DoctorForm() {
               cont.modelo_remuneracao !== data.modelo_remuneracao
             ) {
               await api.contratos.update(cont.id, { ativo: false })
-              await api.contratos.create(contData)
+              await api.contratos.create(newContData)
             } else {
-              await api.contratos.update(cont.id, contData)
+              await api.contratos.update(cont.id, newContData)
             }
           } else {
-            await api.contratos.create(contData)
+            await api.contratos.create(newContData)
           }
+        }
+
+        if (isEditing) {
+          await logChanges(medId, oldDoc, docData, oldCont, newContData, oldPj, newPjData)
         }
       }
 
@@ -294,6 +379,39 @@ export default function DoctorForm() {
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
+      <Dialog open={concurrencyAlert} onOpenChange={setConcurrencyAlert}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-600">
+              <AlertTriangle className="w-5 h-5" /> Conflito de Edição
+            </DialogTitle>
+            <DialogDescription>
+              Este registro foi alterado por outro usuário enquanto você o editava. Salvar agora
+              sobrescreverá as alterações feitas por ele.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => window.location.reload()}>
+              Recarregar Dados
+            </Button>
+            <Button
+              variant="default"
+              onClick={() => {
+                setConcurrencyAlert(false)
+                performSave(
+                  methods.getValues(),
+                  methods.getValues('status_cadastro') || 'Rascunho',
+                  false,
+                  true,
+                )
+              }}
+            >
+              Sobrescrever
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog
         open={duplicateWarning.isOpen}
         onOpenChange={(open) =>
@@ -718,7 +836,7 @@ export default function DoctorForm() {
             )}{' '}
             Enviar para Revisão
           </Button>
-          {role === 'Administrador' && (
+          {(role === 'Admin' || role === 'Revisor') && (
             <Button
               type="button"
               className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
