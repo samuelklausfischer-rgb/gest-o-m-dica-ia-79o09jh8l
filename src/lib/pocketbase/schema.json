@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-10T12:56:19.748Z",
+  "generatedAt": "2026-04-10T13:18:52.381Z",
   "collections": [
     {
       "name": "users",
@@ -147,7 +147,16 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["Rascunho", "Pendente de Revisão", "Ativo", "Inativo"]
+          "selectValues": [
+            "Rascunho",
+            "Pendente de Revisão",
+            "Pendente Documental",
+            "Pendente Contratual",
+            "Aprovado",
+            "Ativo",
+            "Inativo",
+            "Rejeitado"
+          ]
         },
         {
           "name": "ativo",
@@ -361,6 +370,26 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "status_validacao",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["Validado", "Pendente", "Inválido", "Vencido"]
+        },
+        {
+          "name": "categoria_documento",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["Pessoal", "CRM", "RQE", "Contrato", "Comprovante", "PJ", "Outro"]
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": []

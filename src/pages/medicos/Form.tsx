@@ -16,14 +16,24 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { useToast } from '@/hooks/use-toast'
 import { api } from '@/services/api'
 import { useAuth } from '@/hooks/use-auth'
-import { ArrowLeft, Save, CheckCircle, Clock } from 'lucide-react'
+import { maskCpf, maskCnpj, maskPhone } from '@/utils/masks'
+import { ArrowLeft, Save, CheckCircle, Clock, AlertTriangle } from 'lucide-react'
+import pb from '@/lib/pocketbase/client'
 
 const formSchema = z.object({
   nome_completo: z.string().min(3, 'Nome muito curto'),
-  cpf: z.string().min(11, 'CPF inválido'),
+  cpf: z.string().min(14, 'CPF inválido'),
   email: z.string().email('E-mail inválido').or(z.literal('')),
   telefone: z.string().optional(),
   crm: z.string().min(4, 'CRM inválido'),
@@ -54,8 +64,13 @@ export default function DoctorForm() {
   const navigate = useNavigate()
   const { toast } = useToast()
   const { user } = useAuth()
-  const role = user?.name === 'Admin' ? 'Administrador' : 'Operacional'
+  const role = user?.name === 'Admin' || user?.name === 'Revisor' ? 'Administrador' : 'Operacional'
   const [activeTab, setActiveTab] = useState('pessoais')
+  const [duplicateWarning, setDuplicateWarning] = useState<{
+    isOpen: boolean
+    type: string
+    record: any
+  }>({ isOpen: false, type: '', record: null })
 
   const methods = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -73,10 +88,12 @@ export default function DoctorForm() {
         .then(([doc, pj, cont]) => {
           methods.reset({
             ...doc,
+            cpf: maskCpf(doc.cpf),
+            telefone: doc.telefone ? maskPhone(doc.telefone) : '',
             data_assinatura: cont?.data_assinatura ? cont.data_assinatura.split('T')[0] : '',
             modelo_remuneracao: cont?.modelo_remuneracao || '',
             valor_acordado: cont?.valor_acordado || '',
-            pj_cnpj: pj?.cnpj || '',
+            pj_cnpj: pj?.cnpj ? maskCnpj(pj.cnpj) : '',
             pj_razao_social: pj?.razao_social || '',
           } as any)
         })
@@ -92,11 +109,36 @@ export default function DoctorForm() {
   const showContract = watchCategoria === 'MEDICO PRN' || watchCategoria === 'MEDICO PALHOÇA'
   const showPj = watchTipoContratacao === 'PJ'
 
-  const onSave = async (data: FormValues, status: string) => {
+  const checkDuplicates = async (cpf: string, crm: string, uf: string) => {
+    const unmaskedCpf = cpf.replace(/\D/g, '')
+    if (!unmaskedCpf && !crm) return null
+    try {
+      const records = await pb.collection('medicos').getFullList({
+        filter: `(cpf="${unmaskedCpf}" || (crm="${crm}" && uf_crm="${uf}")) ${isEditing ? `&& id != "${id}"` : ''}`,
+      })
+      return records.length > 0 ? records[0] : null
+    } catch {
+      return null
+    }
+  }
+
+  const performSave = async (data: FormValues, status: string, skipDuplicateCheck = false) => {
+    if (!skipDuplicateCheck) {
+      const dup = await checkDuplicates(data.cpf, data.crm, data.uf_crm)
+      if (dup) {
+        setDuplicateWarning({
+          isOpen: true,
+          type: dup.cpf === data.cpf.replace(/\D/g, '') ? 'CPF' : 'CRM+UF',
+          record: dup,
+        })
+        return
+      }
+    }
+
     try {
       const docData = {
         nome_completo: data.nome_completo,
-        cpf: data.cpf,
+        cpf: data.cpf.replace(/\D/g, ''),
         crm: data.crm,
         uf_crm: data.uf_crm,
         rqe: data.rqe,
@@ -108,7 +150,7 @@ export default function DoctorForm() {
         tipo_contratacao: data.tipo_contratacao,
         contrato_assinado: data.contrato_assinado,
         status_cadastro: status,
-        ativo: status !== 'Inativo',
+        ativo: status !== 'Inativo' && status !== 'Rejeitado',
         origem_cadastro: 'manual',
       }
 
@@ -123,10 +165,10 @@ export default function DoctorForm() {
       }
 
       if (medId) {
-        if (data.tipo_contratacao === 'PJ') {
+        if (showPj) {
           const pjData = {
             medico_id: medId,
-            cnpj: data.pj_cnpj,
+            cnpj: data.pj_cnpj?.replace(/\D/g, ''),
             razao_social: data.pj_razao_social,
           }
           const pj = await api.dadosPj.getByMedico(medId)
@@ -152,26 +194,58 @@ export default function DoctorForm() {
       toast({ title: 'Sucesso', description: 'Dados salvos com sucesso.' })
       navigate('/medicos')
     } catch (error: any) {
-      const err = error.response?.data
-      if (err?.cpf)
-        toast({ title: 'Atenção', description: 'CPF já cadastrado.', variant: 'destructive' })
-      else if (err?.crm)
-        toast({ title: 'Atenção', description: 'CRM já cadastrado.', variant: 'destructive' })
-      else
-        toast({
-          title: 'Erro',
-          description: 'Verifique os dados informados.',
-          variant: 'destructive',
-        })
+      toast({ title: 'Erro', description: 'Falha ao salvar dados.', variant: 'destructive' })
     }
   }
 
-  const handleDraft = () => onSave(methods.getValues(), 'Rascunho')
-  const handleReview = () => methods.handleSubmit((data) => onSave(data, 'Pendente de Revisão'))()
-  const handleApprove = () => methods.handleSubmit((data) => onSave(data, 'Ativo'))()
+  const handleDraft = () => methods.handleSubmit((data) => performSave(data, 'Rascunho'))()
+  const handleReview = () =>
+    methods.handleSubmit((data) => performSave(data, 'Pendente de Revisão'))()
+  const handleApprove = () => methods.handleSubmit((data) => performSave(data, 'Aprovado'))()
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
+      <Dialog
+        open={duplicateWarning.isOpen}
+        onOpenChange={(open) =>
+          !open && setDuplicateWarning({ ...duplicateWarning, isOpen: false })
+        }
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="w-5 h-5" /> Cadastro Duplicado Detectado
+            </DialogTitle>
+            <DialogDescription>
+              Encontramos um cadastro existente com o mesmo <strong>{duplicateWarning.type}</strong>
+              .
+              <br />
+              <br />
+              Nome: <strong>{duplicateWarning.record?.nome_completo}</strong>
+              <br />
+              Status: <strong>{duplicateWarning.record?.status_cadastro}</strong>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDuplicateWarning({ ...duplicateWarning, isOpen: false })}
+            >
+              Cancelar e Revisar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setDuplicateWarning({ ...duplicateWarning, isOpen: false })
+                performSave(methods.getValues(), 'Rascunho', true)
+              }}
+            >
+              Salvar mesmo assim (Forçar)
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" onClick={() => navigate('/medicos')}>
           <ArrowLeft className="w-5 h-5" />
@@ -180,7 +254,9 @@ export default function DoctorForm() {
           <h1 className="text-3xl font-bold tracking-tight text-primary">
             {isEditing ? 'Editar Médico' : 'Novo Cadastro Manual'}
           </h1>
-          <p className="text-muted-foreground mt-1">Preencha os dados do profissional.</p>
+          <p className="text-muted-foreground mt-1">
+            Preencha os dados do profissional nas etapas abaixo.
+          </p>
         </div>
       </div>
 
@@ -189,34 +265,30 @@ export default function DoctorForm() {
           <FormProvider {...methods}>
             <form className="space-y-8">
               <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <TabsList className="grid grid-cols-5 w-full h-auto p-1 bg-muted">
-                  <TabsTrigger value="pessoais" className="py-2.5 text-xs sm:text-sm">
-                    Pessoais
+                <TabsList className="flex flex-wrap w-full h-auto p-1 bg-muted">
+                  <TabsTrigger value="pessoais" className="flex-1 py-2.5 text-xs sm:text-sm">
+                    1. Pessoais
                   </TabsTrigger>
-                  <TabsTrigger value="profissionais" className="py-2.5 text-xs sm:text-sm">
-                    Profissionais
+                  <TabsTrigger value="profissionais" className="flex-1 py-2.5 text-xs sm:text-sm">
+                    2. Profissionais
                   </TabsTrigger>
-                  <TabsTrigger value="categoria" className="py-2.5 text-xs sm:text-sm">
-                    Categoria
+                  <TabsTrigger value="categoria" className="flex-1 py-2.5 text-xs sm:text-sm">
+                    3. Categoria
                   </TabsTrigger>
-                  <TabsTrigger
-                    value="contrato"
-                    disabled={!showContract}
-                    className="py-2.5 text-xs sm:text-sm"
-                  >
-                    Contrato
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="empresa"
-                    disabled={!showPj}
-                    className="py-2.5 text-xs sm:text-sm"
-                  >
-                    Empresa PJ
-                  </TabsTrigger>
+                  {showContract && (
+                    <TabsTrigger value="contrato" className="flex-1 py-2.5 text-xs sm:text-sm">
+                      4. Contrato
+                    </TabsTrigger>
+                  )}
+                  {showPj && (
+                    <TabsTrigger value="empresa" className="flex-1 py-2.5 text-xs sm:text-sm">
+                      5. Empresa PJ
+                    </TabsTrigger>
+                  )}
                 </TabsList>
 
                 <div className="mt-8">
-                  <TabsContent value="pessoais" className="space-y-4">
+                  <TabsContent value="pessoais" className="space-y-4 animate-fade-in">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <FormField
                         control={methods.control}
@@ -238,7 +310,11 @@ export default function DoctorForm() {
                           <FormItem>
                             <FormLabel>CPF *</FormLabel>
                             <FormControl>
-                              <Input placeholder="000.000.000-00" {...field} />
+                              <Input
+                                placeholder="000.000.000-00"
+                                {...field}
+                                onChange={(e) => field.onChange(maskCpf(e.target.value))}
+                              />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -264,7 +340,11 @@ export default function DoctorForm() {
                           <FormItem>
                             <FormLabel>Telefone</FormLabel>
                             <FormControl>
-                              <Input placeholder="(11) 99999-9999" {...field} />
+                              <Input
+                                placeholder="(11) 99999-9999"
+                                {...field}
+                                onChange={(e) => field.onChange(maskPhone(e.target.value))}
+                              />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -273,7 +353,7 @@ export default function DoctorForm() {
                     </div>
                   </TabsContent>
 
-                  <TabsContent value="profissionais" className="space-y-4">
+                  <TabsContent value="profissionais" className="space-y-4 animate-fade-in">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <FormField
                         control={methods.control}
@@ -343,7 +423,7 @@ export default function DoctorForm() {
                     </div>
                   </TabsContent>
 
-                  <TabsContent value="categoria" className="space-y-4">
+                  <TabsContent value="categoria" className="space-y-4 animate-fade-in">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <FormField
                         control={methods.control}
@@ -393,7 +473,7 @@ export default function DoctorForm() {
                   </TabsContent>
 
                   {showContract && (
-                    <TabsContent value="contrato" className="space-y-4">
+                    <TabsContent value="contrato" className="space-y-4 animate-fade-in">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <FormField
                           control={methods.control}
@@ -467,7 +547,7 @@ export default function DoctorForm() {
                   )}
 
                   {showPj && (
-                    <TabsContent value="empresa" className="space-y-4">
+                    <TabsContent value="empresa" className="space-y-4 animate-fade-in">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <FormField
                           control={methods.control}
@@ -476,7 +556,11 @@ export default function DoctorForm() {
                             <FormItem>
                               <FormLabel>CNPJ *</FormLabel>
                               <FormControl>
-                                <Input placeholder="00.000.000/0000-00" {...field} />
+                                <Input
+                                  placeholder="00.000.000/0000-00"
+                                  {...field}
+                                  onChange={(e) => field.onChange(maskCnpj(e.target.value))}
+                                />
                               </FormControl>
                               <FormMessage />
                             </FormItem>
@@ -523,7 +607,7 @@ export default function DoctorForm() {
               className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
               onClick={handleApprove}
             >
-              <CheckCircle className="w-4 h-4" /> Aprovar
+              <CheckCircle className="w-4 h-4" /> Aprovar Imediatamente
             </Button>
           )}
         </div>

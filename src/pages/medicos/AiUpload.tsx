@@ -181,12 +181,13 @@ export default function AiUpload() {
                   <div className="flex items-center justify-between">
                     <Label htmlFor="cpf">CPF</Label>
                     <div className="flex items-center gap-1 text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
-                      <AlertTriangle className="w-3 h-3" /> Baixa Confiança (Revisar)
+                      <AlertTriangle className="w-3 h-3" /> Baixa Confiança (60%)
                     </div>
                   </div>
                   <Input
                     id="cpf"
                     value={formData.cpf}
+                    className="border-amber-400 bg-amber-50/30"
                     onChange={(e) => setFormData({ ...formData, cpf: e.target.value })}
                   />
                 </div>

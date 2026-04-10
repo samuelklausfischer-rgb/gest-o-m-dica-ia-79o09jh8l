@@ -45,7 +45,7 @@ import { useAuth } from '@/hooks/use-auth'
 export default function Layout() {
   const location = useLocation()
   const { user, signOut } = useAuth()
-  const role = user?.name === 'Admin' ? 'Administrador' : 'Operacional'
+  const role = user?.name === 'Admin' || user?.name === 'Revisor' ? 'Administrador' : 'Operacional'
 
   const getBreadcrumbs = () => {
     const paths = location.pathname.split('/').filter(Boolean)

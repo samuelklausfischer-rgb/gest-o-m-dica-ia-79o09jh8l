@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import {
   UserPlus,
   BrainCircuit,
@@ -10,6 +11,7 @@ import {
   FileWarning,
   Clock,
   FileSignature,
+  AlertTriangle,
 } from 'lucide-react'
 import { Pie, PieChart, Cell, ResponsiveContainer } from 'recharts'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
@@ -19,12 +21,21 @@ import { useRealtime } from '@/hooks/use-realtime'
 export default function Index() {
   const [doctors, setDoctors] = useState<any[]>([])
   const [activities, setActivities] = useState<any[]>([])
+  const [expiringContracts, setExpiringContracts] = useState<any[]>([])
+  const [pendingIa, setPendingIa] = useState<any[]>([])
 
   const loadData = async () => {
     try {
-      const [docs, acts] = await Promise.all([api.medicos.list(), api.auditoria.listRecent()])
+      const [docs, acts, expiring, pending] = await Promise.all([
+        api.medicos.list(),
+        api.auditoria.listRecent(),
+        api.contratos.listExpiring(30),
+        api.ia.listPendingOld(),
+      ])
       setDoctors(docs)
       setActivities(acts.items)
+      setExpiringContracts(expiring)
+      setPendingIa(pending)
     } catch (e) {
       console.error(e)
     }
@@ -35,15 +46,21 @@ export default function Index() {
   }, [])
   useRealtime('medicos', () => loadData())
   useRealtime('auditoria_medicos', () => loadData())
+  useRealtime('contratos_medicos', () => loadData())
 
   const stats = {
     total: doctors.length,
     signed: doctors.filter((d) => d.contrato_assinado).length,
-    unsigned: doctors.filter((d) => !d.contrato_assinado).length,
-    pj: doctors.filter((d) => d.tipo_contratacao === 'PJ').length,
-    scp: doctors.filter((d) => d.tipo_contratacao === 'SCP').length,
-    pending: doctors.filter((d) => d.status_cadastro === 'Pendente de Revisão').length,
-    drafts: doctors.filter((d) => d.status_cadastro === 'Rascunho').length,
+    unsigned: doctors.filter(
+      (d) =>
+        !d.contrato_assinado &&
+        (d.categoria_medico === 'MEDICO PRN' || d.categoria_medico === 'MEDICO PALHOÇA'),
+    ).length,
+    pending: doctors.filter((d) =>
+      ['Pendente de Revisão', 'Pendente Documental', 'Pendente Contratual'].includes(
+        d.status_cadastro,
+      ),
+    ).length,
   }
 
   const categoryData = Object.entries(
@@ -111,19 +128,85 @@ export default function Index() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-destructive">{stats.unsigned}</div>
+            <p className="text-xs text-muted-foreground mt-1">Apenas PRN/Palhoça</p>
           </CardContent>
         </Card>
         <Card className="shadow-sm bg-accent text-accent-foreground">
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-sm font-medium">Revisões Pendentes</CardTitle>
+            <CardTitle className="text-sm font-medium">Pendências</CardTitle>
             <Clock className="w-4 h-4 opacity-70" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.pending}</div>
-            <p className="text-xs opacity-80 mt-1">Aguardando aprovação de IA</p>
+            <p className="text-xs opacity-80 mt-1">Aguardando ações</p>
           </CardContent>
         </Card>
       </div>
+
+      {(expiringContracts.length > 0 || pendingIa.length > 0) && (
+        <Card className="border-l-4 border-l-amber-500 shadow-sm bg-amber-500/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-500" />
+              Prioridades do Dia
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {expiringContracts.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-sm font-medium text-amber-700">
+                    Contratos Vencendo (30 dias)
+                  </h4>
+                  <ul className="space-y-2">
+                    {expiringContracts.map((c) => (
+                      <li
+                        key={c.id}
+                        className="flex justify-between items-center bg-background p-2 rounded border text-sm"
+                      >
+                        <span className="font-medium truncate mr-2">
+                          {c.expand?.medico_id?.nome_completo || 'Médico'}
+                        </span>
+                        <Badge
+                          variant="outline"
+                          className="shrink-0 text-amber-600 border-amber-200"
+                        >
+                          {new Date(c.vigencia_fim).toLocaleDateString('pt-BR')}
+                        </Badge>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {pendingIa.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-sm font-medium text-amber-700">IA Pendente (&gt; 24h)</h4>
+                  <ul className="space-y-2">
+                    {pendingIa.map((ia) => (
+                      <li
+                        key={ia.id}
+                        className="flex justify-between items-center bg-background p-2 rounded border text-sm"
+                      >
+                        <span className="font-medium truncate mr-2">Importação em lote</span>
+                        <Badge
+                          variant="outline"
+                          className="shrink-0 text-amber-600 border-amber-200"
+                        >
+                          Há{' '}
+                          {Math.floor(
+                            (Date.now() - new Date(ia.created).getTime()) / (1000 * 60 * 60),
+                          )}
+                          h
+                        </Badge>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="col-span-1 shadow-sm flex flex-col">
@@ -174,23 +257,26 @@ export default function Index() {
             <CardDescription>Últimas atualizações no sistema.</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-6">
+            <div className="space-y-6 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-border before:to-transparent">
               {activities.map((act) => (
-                <div key={act.id} className="flex gap-4">
-                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                    <FileSignature className="w-4 h-4 text-primary" />
+                <div
+                  key={act.id}
+                  className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active mb-4"
+                >
+                  <div className="flex items-center justify-center w-10 h-10 rounded-full border-4 border-white bg-primary/10 text-primary shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 shadow z-10">
+                    <FileSignature className="w-4 h-4" />
                   </div>
-                  <div className="flex-1 space-y-1">
-                    <p className="text-sm font-medium leading-none">
-                      {act.acao} -{' '}
-                      <span className="text-primary">
-                        {act.expand?.medico_id?.nome_completo || 'Médico'}
-                      </span>
-                    </p>
-                    <p className="text-xs text-muted-foreground">
+                  <div className="w-[calc(100%-3rem)] md:w-[calc(50%-2rem)] p-4 rounded-lg border bg-card shadow-sm">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="font-semibold text-sm">{act.acao}</div>
+                    </div>
+                    <div className="text-sm font-medium text-primary">
+                      {act.expand?.medico_id?.nome_completo || 'Médico'}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1">
                       Por {act.expand?.usuario_id?.name || 'Sistema'} em{' '}
                       {new Date(act.created).toLocaleString('pt-BR')}
-                    </p>
+                    </div>
                   </div>
                 </div>
               ))}
