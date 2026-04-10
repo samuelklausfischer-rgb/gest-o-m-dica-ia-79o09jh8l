@@ -44,7 +44,9 @@ export default function DoctorList() {
     try {
       const docs = await api.medicos.list()
       setDoctors(docs)
-    } catch (e) {}
+    } catch (e) {
+      console.error(e)
+    }
   }
 
   useEffect(() => {
